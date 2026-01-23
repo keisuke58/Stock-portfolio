@@ -61,3 +61,6 @@ desktop.ini
 *.tmp
 *.bak
 *.cache
+
+# Streamlit secrets (local development)
+.streamlit/secrets.toml

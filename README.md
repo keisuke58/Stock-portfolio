@@ -84,6 +84,51 @@ python main.py config.json
 python run_daily.py
 ```
 
+## Deploy to Streamlit Cloud
+
+### 1. Prepare Your Repository
+
+Make sure your code is pushed to GitHub:
+- `streamlit_app.py` (main app file)
+- `requirements.txt` (dependencies)
+- `.streamlit/config.toml` (optional configuration)
+
+### 2. Deploy on Streamlit Cloud
+
+1. Go to [share.streamlit.io](https://share.streamlit.io)
+2. Sign in with your GitHub account
+3. Click "New app"
+4. Select your repository: `keisuke58/Stock-portfolio`
+5. Set Main file path: `streamlit_app.py`
+6. Click "Deploy!"
+
+### 3. Configure Secrets (Important!)
+
+After deployment, configure your secrets:
+
+1. Go to your app's settings (☰ → Settings → Secrets)
+2. Add your configuration as TOML format:
+
+```toml
+webhook = "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL"
+line_token = "YOUR_LINE_NOTIFY_ACCESS_TOKEN"
+slack_webhook = "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+gmail_user = "your-email@gmail.com"
+gmail_password = "your-app-password"
+gmail_to = "recipient@gmail.com"
+symbols = ["BTC", "ETH", "AAPL", "TSLA"]
+check_interval = 3600
+```
+
+**Note:** The app will work without secrets, but will use default symbols only.
+
+### 4. Troubleshooting
+
+If deployment fails:
+- Check that all dependencies in `requirements.txt` are correct
+- Ensure `streamlit_app.py` is in the root directory
+- Check the deployment logs in Streamlit Cloud dashboard
+
 ## Data sources
 Currently supported price data:
 * [KuCoin Futures API](https://docs.kucoin.com/futures/#general)

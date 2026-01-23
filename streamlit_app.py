@@ -64,13 +64,35 @@ st.markdown("""
 
 @st.cache_data(ttl=3600)  # 1時間キャッシュ
 def load_config(config_path: str = "config.json") -> Dict:
-    """設定ファイルを読み込む"""
+    """設定ファイルを読み込む（Streamlit Cloud Secrets対応）"""
+    config = {}
+    
+    # まずStreamlit Secretsを試す（Streamlit Cloud用）
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+        if hasattr(st, 'secrets') and len(st.secrets) > 0:
+            config = dict(st.secrets)
+            return config
+    except Exception:
+        pass
+    
+    # 次にconfig.jsonファイルを試す（ローカル開発用）
+    try:
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                return config
     except Exception as e:
-        st.error(f"設定ファイル読み込みエラー: {e}")
-        return {}
+        st.warning(f"設定ファイル読み込みエラー: {e}")
+    
+    # デフォルト値
+    if not config:
+        config = {
+            "symbols": ["BTC", "ETH", "AAPL", "TSLA"],
+            "check_interval": 3600
+        }
+        st.info("デフォルト設定を使用しています。設定ファイルまたはSecretsを設定してください。")
+    
+    return config
 
 
 @st.cache_data(ttl=1800)  # 30分キャッシュ
