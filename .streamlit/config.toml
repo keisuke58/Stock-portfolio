@@ -1,8 +1,8 @@
 [server]
+# Streamlit Cloud manages ports automatically, don't set port here
 headless = true
-port = 8502
 enableCORS = false
-enableXsrfProtection = false
+enableXsrfProtection = true
 
 [browser]
 gatherUsageStats = false
