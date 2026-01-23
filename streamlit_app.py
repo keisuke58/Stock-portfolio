@@ -62,6 +62,55 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+@st.cache_data(ttl=86400)  # 24時間キャッシュ（全銘柄リストは変更頻度が低い）
+def get_all_tickers() -> List[str]:
+    """全銘柄リストを取得（約20000件）"""
+    try:
+        from collect_tickers import (
+            get_sp500_tickers,
+            get_nasdaq_tickers,
+            get_all_nasdaq_listed,
+            get_all_nyse_listed,
+            get_popular_etfs,
+            get_extended_etfs,
+            get_quantum_ai_stocks,
+            get_growth_stocks,
+            get_nyse_major_stocks,
+            get_small_mid_cap_growth,
+            get_more_stocks
+        )
+        
+        all_tickers = []
+        
+        # 各ソースから銘柄を収集
+        all_tickers.extend(get_sp500_tickers())
+        all_tickers.extend(get_nasdaq_tickers())
+        all_tickers.extend(get_all_nasdaq_listed())
+        all_tickers.extend(get_all_nyse_listed())
+        all_tickers.extend(get_popular_etfs())
+        all_tickers.extend(get_extended_etfs())
+        all_tickers.extend(get_quantum_ai_stocks())
+        all_tickers.extend(get_growth_stocks())
+        all_tickers.extend(get_nyse_major_stocks())
+        all_tickers.extend(get_small_mid_cap_growth())
+        all_tickers.extend(get_more_stocks())
+        
+        # 重複除去
+        unique_tickers = list(set([t.upper() for t in all_tickers if t]))
+        
+        # 主要な暗号通貨も追加
+        crypto_symbols = ['BTC', 'ETH', 'SOL', 'BNB', 'ADA', 'XRP', 'DOGE', 'DOT', 'MATIC', 'AVAX']
+        for crypto in crypto_symbols:
+            if crypto not in unique_tickers:
+                unique_tickers.append(crypto)
+        
+        return sorted(unique_tickers)
+    except Exception as e:
+        st.warning(f"全銘柄リスト取得エラー: {e}")
+        # フォールバック: 基本的な銘柄リスト
+        return ["BTC", "ETH", "AAPL", "TSLA", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "SPY", "QQQ"]
+
+
 @st.cache_data(ttl=3600)  # 1時間キャッシュ
 def load_config(config_path: str = "config.json") -> Dict:
     """設定ファイルを読み込む（Streamlit Cloud Secrets対応）"""
@@ -84,13 +133,14 @@ def load_config(config_path: str = "config.json") -> Dict:
     except Exception as e:
         st.warning(f"設定ファイル読み込みエラー: {e}")
     
-    # デフォルト値
-    if not config:
+    # デフォルト値: 全銘柄リスト（約20000件）
+    if not config or not config.get('symbols'):
+        all_tickers = get_all_tickers()
         config = {
-            "symbols": ["BTC", "ETH", "AAPL", "TSLA"],
+            "symbols": all_tickers,
             "check_interval": 3600
         }
-        st.info("デフォルト設定を使用しています。設定ファイルまたはSecretsを設定してください。")
+        st.info(f"デフォルト設定を使用しています。{len(all_tickers)}件の銘柄を監視します。設定ファイルまたはSecretsを設定してカスタマイズできます。")
     
     return config
 
