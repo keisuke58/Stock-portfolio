@@ -2,6 +2,17 @@
 
 A comprehensive investment analysis system that watches price movements of cryptocurrencies and stocks, alerts via Discord/Line/Slack/Gmail, and provides a Streamlit dashboard for visualization.
 
+このプロジェクトは「段階4（招待制Streamlit提供）」を
+最優先ゴールとする。
+SaaS化（段階5）は将来オプションであり、
+現時点では以下を絶対に守る：
+
+- UIはStreamlit前提
+- 認証・決済は入れない
+- 外部サービス依存を増やさない
+- 分析の強さ・説明・実績を最優先
+
+
 ## Features
 
 ### 1. Price Alerting Bot
