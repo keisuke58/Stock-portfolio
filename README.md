@@ -1,10 +1,88 @@
-# Crypto Price Movement Discord Alerting Bot
-A simple program to watch price movements of cryptocurrencies, and then alert a Discord channel when certain criterion are met.
+# Crypto Price Movement Discord Alerting Bot & Investment Analysis Dashboard
 
-By simple I mean
-* standard Python libraries only
-* no databases
-* single config + program + calculation + ticker symbol
+A comprehensive investment analysis system that watches price movements of cryptocurrencies and stocks, alerts via Discord/Line/Slack/Gmail, and provides a Streamlit dashboard for visualization.
+
+## Features
+
+### 1. Price Alerting Bot
+- Real-time price movement detection
+- Multi-channel notifications (Discord, Line, Slack, Gmail)
+- State machine for trend detection (WATCH → BASE → BUY)
+
+### 2. Streamlit Investment Dashboard 📊
+- Interactive investment analysis dashboard
+- Real-time price charts and metrics
+- Multi-asset comparison
+- Investment score calculation
+- Financial data visualization
+
+## Quick Start
+
+### Streamlit Dashboard
+
+Start the Streamlit dashboard:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+The dashboard will open in your browser at `http://localhost:8501`
+
+**Dashboard Features:**
+- 🏠 **Home**: Overview of all monitored assets with investment scores
+- 📈 **Symbol Detail**: Detailed analysis for individual assets
+- 🔍 **Comparison**: Side-by-side comparison of up to 5 assets
+- ⚙️ **Settings**: Configuration and cache management
+
+### Alerting Bot
+
+Run the alerting bot:
+
+```bash
+python main.py config.json
+```
+
+## Setup
+
+### 1. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Configure
+
+Create or edit `config.json`:
+
+```json
+{
+    "webhook": "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL",
+    "line_token": "YOUR_LINE_NOTIFY_ACCESS_TOKEN",
+    "slack_webhook": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK",
+    "gmail_user": "your-email@gmail.com",
+    "gmail_password": "your-app-password",
+    "gmail_to": "recipient@gmail.com",
+    "symbols": ["BTC", "ETH", "AAPL", "TSLA"],
+    "check_interval": 3600
+}
+```
+
+### 3. Run
+
+**Streamlit Dashboard:**
+```bash
+streamlit run streamlit_app.py
+```
+
+**Alerting Bot:**
+```bash
+python main.py config.json
+```
+
+**Daily Runner (Scheduled):**
+```bash
+python run_daily.py
+```
 
 ## Data sources
 Currently supported price data:
