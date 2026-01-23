@@ -2,6 +2,18 @@
 
 A comprehensive investment analysis system that watches price movements of cryptocurrencies and stocks, alerts via Discord/Line/Slack/Gmail, and provides a Streamlit dashboard for visualization.
 
+## 🎯 プロジェクトビジョン
+
+**段階4目標**: 「招待制で使える、説明できて実績のある株分析プラットフォーム」
+
+詳細は [VISION.md](./VISION.md) を参照してください。
+
+### 必須4要素
+- ✅ **スコア**: 判断を単純化（VMS/ScoreV2実装済み）
+- ✅ **理由説明**: 納得感（explainer.py実装済み）
+- 🔄 **バックテスト**: 信頼（backtester.py実装済み、UI改善中）
+- ✅ **通知**: 放置できる（Discord実装済み）
+
 ## Features
 
 ### 1. Price Alerting Bot

@@ -6,8 +6,10 @@ import pandas as pd
 from typing import List, Dict
 from streamlit_components.chart_components import (
     create_score_distribution_chart,
-    create_donut_chart
+    create_donut_chart,
+    create_metrics_heatmap
 )
+from streamlit_components.export_components import create_export_buttons
 
 
 def render_home_dashboard(data: List[Dict]):
@@ -70,22 +72,44 @@ def render_home_dashboard(data: List[Dict]):
     # データテーブル
     st.subheader("📋 全銘柄一覧")
     
-    # フィルタリング
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        filter_state = st.selectbox("状態でフィルタ", ["全て", "BUY", "BASE", "WATCH", "NORMAL"])
-    with col2:
-        filter_category = st.selectbox("カテゴリでフィルタ", ["全て"] + list(set(item.get('category', 'その他') for item in data)))
-    with col3:
-        min_score = st.slider("最小スコア", 0, 100, 0)
+    # 高度なフィルタリング
+    with st.expander("🔍 高度なフィルタリング", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            filter_state = st.multiselect("状態でフィルタ", ["BUY", "BASE", "WATCH", "NORMAL"], default=[])
+        with col2:
+            categories = list(set(item.get('category', 'その他') for item in data))
+            filter_category = st.multiselect("カテゴリでフィルタ", categories, default=[])
+        with col3:
+            score_range = st.slider("スコア範囲", 0, 100, (0, 100))
+        
+        # 全文検索
+        search_query = st.text_input("🔎 全文検索（シンボル名、カテゴリなど）", "")
     
     # フィルタリング適用
     filtered_data = data
-    if filter_state != "全て":
-        filtered_data = [item for item in filtered_data if item.get('current_state') == filter_state]
-    if filter_category != "全て":
-        filtered_data = [item for item in filtered_data if item.get('category') == filter_category]
-    filtered_data = [item for item in filtered_data if item.get('total_score', item.get('investment_score', 0)) >= min_score]
+    
+    # 状態フィルタ
+    if filter_state:
+        filtered_data = [item for item in filtered_data if item.get('current_state') in filter_state]
+    
+    # カテゴリフィルタ
+    if filter_category:
+        filtered_data = [item for item in filtered_data if item.get('category') in filter_category]
+    
+    # スコア範囲フィルタ
+    filtered_data = [item for item in filtered_data 
+                     if score_range[0] <= item.get('total_score', item.get('investment_score', 0)) <= score_range[1]]
+    
+    # 全文検索
+    if search_query:
+        search_lower = search_query.lower()
+        filtered_data = [item for item in filtered_data 
+                        if search_lower in item.get('symbol', '').lower() 
+                        or search_lower in item.get('category', '').lower()
+                        or search_lower in str(item.get('investment_stance', '')).lower()]
+    
+    st.info(f"フィルタ結果: {len(filtered_data)}件 / 全{len(data)}件")
     
     # テーブル表示
     df = pd.DataFrame([
@@ -133,3 +157,19 @@ def render_home_dashboard(data: List[Dict]):
                 ),
                 use_container_width=True
             )
+    
+    st.markdown("---")
+    
+    # メトリクスヒートマップ（トップ20銘柄）
+    st.subheader("🔥 メトリクス比較ヒートマップ（トップ20）")
+    top_20 = sorted(data, key=lambda x: x.get('total_score', x.get('investment_score', 0)), reverse=True)[:20]
+    try:
+        metrics_fig = create_metrics_heatmap(top_20)
+        st.plotly_chart(metrics_fig, use_container_width=True)
+    except Exception as e:
+        st.warning(f"ヒートマップの生成に失敗しました: {e}")
+    
+    st.markdown("---")
+    
+    # エクスポート機能
+    create_export_buttons(filtered_data, filename_prefix="investment_analysis")

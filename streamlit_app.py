@@ -13,8 +13,10 @@ import pandas as pd
 # パスを追加
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from investment_analyzer import InvestmentAnalyzer
-from signals import get_historical_prices, is_crypto_symbol
+from signals import is_crypto_symbol
+from services.config_service import load_config
+from services.analysis_service import get_analysis_data
+from services.symbol_service import get_symbol_detail_data
 from streamlit_components.chart_components import (
     create_price_chart,
     create_radar_chart,
@@ -30,6 +32,8 @@ from streamlit_components.metrics_display import (
 from streamlit_components.dashboard_home import render_home_dashboard
 from streamlit_components.symbol_detail import render_symbol_detail
 from streamlit_components.comparison_view import render_comparison_view
+from streamlit_components.portfolio_tracker import render_portfolio_page
+from streamlit_components.alert_manager import render_alerts_page
 
 # ページ設定
 st.set_page_config(
@@ -39,8 +43,52 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# カスタムCSS - モダンでプロフェッショナルなデザイン
-st.markdown("""
+# ダークモード判定
+dark_mode = st.session_state.get('dark_mode', False)
+
+# カスタムCSS - モダンでプロフェッショナルなデザイン（ダークモード対応）
+if dark_mode:
+    css_template = """
+<style>
+    /* ダークモード */
+    .stApp {
+        background-color: #1e1e1e;
+        color: #e0e0e0;
+    }
+    
+    .main-header {
+        font-size: 2.8rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, #a78bfa 0%, #ec4899 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        text-align: center;
+        padding: 1.5rem 0;
+        margin-bottom: 2rem;
+        letter-spacing: -0.02em;
+    }
+    
+    .metric-card {
+        background: linear-gradient(135deg, #2d2d2d 0%, #3d3d3d 100%);
+        padding: 1.5rem;
+        border-radius: 12px;
+        border-left: 5px solid #a78bfa;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        color: #e0e0e0;
+    }
+    
+    [data-testid="stMetricValue"] {
+        color: #e0e0e0;
+    }
+    
+    h1, h2, h3 {
+        color: #e0e0e0;
+    }
+</style>
+"""
+else:
+    css_template = """
 <style>
     /* メインヘッダー */
     .main-header {
@@ -169,6 +217,38 @@ st.markdown("""
         background: linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%);
     }
     
+    /* レスポンシブデザイン */
+    @media (max-width: 768px) {
+        .main-header {
+            font-size: 2rem;
+            padding: 1rem 0;
+        }
+        
+        .metric-card {
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        [data-testid="stMetricValue"] {
+            font-size: 1.5rem;
+        }
+        
+        .stButton>button {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .main-header {
+            font-size: 1.5rem;
+        }
+        
+        [data-testid="stMetricValue"] {
+            font-size: 1.2rem;
+        }
+    }
+    
     /* メトリクス値の強調 */
     [data-testid="stMetricValue"] {
         font-size: 2rem;
@@ -236,29 +316,12 @@ def get_all_tickers() -> List[str]:
 
 
 @st.cache_data(ttl=3600)  # 1時間キャッシュ
-def load_config(config_path: str = "config.json") -> Dict:
-    """設定ファイルを読み込む（Streamlit Cloud Secrets対応）"""
-    config = {}
+def load_config_cached(config_path: str = "config.json") -> Dict:
+    """設定ファイルを読み込む（Streamlit Cloud Secrets対応、キャッシュ付き）"""
+    config = load_config(config_path)
     
-    # まずStreamlit Secretsを試す（Streamlit Cloud用）
-    try:
-        if hasattr(st, 'secrets') and len(st.secrets) > 0:
-            config = dict(st.secrets)
-            return config
-    except Exception:
-        pass
-    
-    # 次にconfig.jsonファイルを試す（ローカル開発用）
-    try:
-        if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-                return config
-    except Exception as e:
-        st.warning(f"設定ファイル読み込みエラー: {e}")
-    
-    # デフォルト値: 厳選1000銘柄
-    if not config or not config.get('symbols'):
+    # デフォルト値: 厳選1000銘柄（設定ファイルにsymbolsがない場合）
+    if not config.get('symbols'):
         @st.cache_data(ttl=86400)  # 24時間キャッシュ
         def get_curated_1000_tickers() -> List[str]:
             """厳選1000銘柄を取得"""
@@ -332,66 +395,24 @@ def load_config(config_path: str = "config.json") -> Dict:
                 return ["BTC", "ETH", "AAPL", "TSLA", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "SPY", "QQQ"]
         
         curated_tickers = get_curated_1000_tickers()
-        config = {
-            "symbols": curated_tickers,
-            "check_interval": 3600
-        }
+        config['symbols'] = curated_tickers
+        if 'check_interval' not in config:
+            config['check_interval'] = 3600
         st.info(f"デフォルト設定を使用しています。{len(curated_tickers)}件の厳選銘柄を監視します。")
     
     return config
 
 
 @st.cache_data(ttl=1800)  # 30分キャッシュ
-def get_analysis_data(symbols: List[str], max_assets: int = 200) -> List[Dict]:
-    """投資分析データを取得"""
-    try:
-        analyzer = InvestmentAnalyzer()
-        results = analyzer.analyze_all_assets(symbols, max_assets=max_assets)
-        return results
-    except Exception as e:
-        st.error(f"データ取得エラー: {e}")
-        import traceback
-        st.exception(e)
-        return []
+def get_analysis_data_cached(symbols: List[str], max_assets: int = 200) -> List[Dict]:
+    """投資分析データを取得（並列処理対応、キャッシュ付き）"""
+    return get_analysis_data(symbols, max_assets)
 
 
-@st.cache_data(ttl=1800)
-def get_symbol_detail_data(symbol: str) -> Optional[Dict]:
-    """個別銘柄の詳細データを取得"""
-    try:
-        analyzer = InvestmentAnalyzer()
-        score_data = analyzer.calculate_investment_score(symbol)
-        
-        if not score_data:
-            return None
-        
-        # 財務データを追加
-        if not is_crypto_symbol(symbol):
-            try:
-                financial_data = analyzer.get_comprehensive_financial_data(symbol)
-                company_info = analyzer.get_company_info(symbol)
-                analyst_data = analyzer.get_analyst_recommendations(symbol)
-                
-                score_data['financial_data'] = financial_data
-                score_data['company_info'] = company_info
-                score_data['analyst_data'] = analyst_data
-            except Exception as e:
-                st.warning(f"財務データの取得に失敗しました ({symbol}): {e}")
-        
-        # 価格データを追加
-        try:
-            prices = get_historical_prices(symbol, days=365)
-            score_data['historical_prices'] = prices
-        except Exception as e:
-            st.warning(f"価格データの取得に失敗しました ({symbol}): {e}")
-            score_data['historical_prices'] = []
-        
-        return score_data
-    except Exception as e:
-        st.error(f"銘柄データ取得エラー ({symbol}): {e}")
-        import traceback
-        st.exception(e)
-        return None
+@st.cache_data(ttl=1800)  # 30分キャッシュ
+def get_symbol_detail_data_cached(symbol: str) -> Optional[Dict]:
+    """個別銘柄の詳細データを取得（キャッシュ付き）"""
+    return get_symbol_detail_data(symbol)
 
 
 def main():
@@ -404,14 +425,14 @@ def main():
         # ページ選択
         page = st.radio(
             "ページを選択",
-            ["🏠 ホーム", "📈 銘柄詳細", "🔍 比較分析", "⚙️ 設定"],
+            ["🏠 ホーム", "📈 銘柄詳細", "💡 理由説明", "🔍 比較分析", "🔬 バックテスト", "💼 ポートフォリオ", "🔔 アラート", "⚙️ 設定"],
             index=0
         )
         
         st.markdown("---")
         
         # 設定読み込み
-        config = load_config()
+        config = load_config_cached()
         symbols = config.get('symbols', [])
         
         if not symbols:
@@ -420,18 +441,53 @@ def main():
         
         st.info(f"監視銘柄数: {len(symbols)}")
         
+        # リアルタイム更新設定
+        st.markdown("---")
+        st.subheader("🔄 更新設定")
+        auto_refresh = st.checkbox("自動更新を有効化", value=st.session_state.get('auto_refresh', False))
+        st.session_state.auto_refresh = auto_refresh
+        if auto_refresh:
+            refresh_interval = st.selectbox("更新間隔（秒）", [30, 60, 120, 300, 600], index=1, key="refresh_interval_select")
+            st.session_state.refresh_interval = refresh_interval
+            if 'last_refresh' not in st.session_state:
+                st.session_state.last_refresh = datetime.now()
+        
         # データ更新ボタン
         if st.button("🔄 データを更新"):
             st.cache_data.clear()
+            st.session_state.last_refresh = datetime.now()
             st.rerun()
+        
+        # 更新ステータス
+        if 'last_refresh' in st.session_state:
+            time_since_refresh = (datetime.now() - st.session_state.last_refresh).total_seconds()
+            st.caption(f"最終更新: {int(time_since_refresh)}秒前")
+    
+    # 自動更新処理
+    if 'auto_refresh' in st.session_state and st.session_state.auto_refresh:
+        if 'last_refresh' in st.session_state:
+            refresh_interval = st.session_state.get('refresh_interval', 60)
+            time_since_refresh = (datetime.now() - st.session_state.last_refresh).total_seconds()
+            if time_since_refresh >= refresh_interval:
+                st.cache_data.clear()
+                st.session_state.last_refresh = datetime.now()
+                st.rerun()
     
     # メインコンテンツ
     if page == "🏠 ホーム":
         show_home_page(symbols)
     elif page == "📈 銘柄詳細":
         show_symbol_detail_page(symbols)
+    elif page == "💡 理由説明":
+        show_explanation_page(symbols)
     elif page == "🔍 比較分析":
         show_comparison_page(symbols)
+    elif page == "🔬 バックテスト":
+        render_backtest_page()
+    elif page == "💼 ポートフォリオ":
+        render_portfolio_page()
+    elif page == "🔔 アラート":
+        render_alerts_page()
     elif page == "⚙️ 設定":
         show_settings_page()
 
@@ -441,7 +497,7 @@ def show_home_page(symbols: List[str]):
     # データ取得
     try:
         with st.spinner("データを取得中..."):
-            data = get_analysis_data(symbols, max_assets=200)
+            data = get_analysis_data_cached(symbols, max_assets=200)
         
         if not data:
             st.error("データが取得できませんでした。設定ファイルを確認してください。")
@@ -468,7 +524,7 @@ def show_symbol_detail_page(symbols: List[str]):
     # データ取得
     try:
         with st.spinner(f"{symbol}のデータを取得中..."):
-            data = get_symbol_detail_data(symbol)
+            data = get_symbol_detail_data_cached(symbol)
         
         if not data:
             st.error(f"{symbol}のデータが取得できませんでした")
@@ -476,6 +532,33 @@ def show_symbol_detail_page(symbols: List[str]):
         
         # コンポーネントを使用してレンダリング
         render_symbol_detail(data, symbol)
+        
+    except Exception as e:
+        st.error(f"エラーが発生しました: {e}")
+        import traceback
+        st.exception(e)
+
+
+def show_explanation_page(symbols: List[str]):
+    """理由説明ページを表示"""
+    # 銘柄選択
+    symbol = st.selectbox("銘柄を選択", symbols, key="explanation_symbol")
+    
+    if not symbol:
+        st.warning("銘柄を選択してください")
+        return
+    
+    # データ取得
+    try:
+        with st.spinner(f"{symbol}のデータを取得中..."):
+            data = get_symbol_detail_data_cached(symbol)
+        
+        if not data:
+            st.error(f"{symbol}のデータが取得できませんでした")
+            return
+        
+        # コンポーネントを使用してレンダリング
+        render_explanation_page(symbol, data)
         
     except Exception as e:
         st.error(f"エラーが発生しました: {e}")
@@ -504,7 +587,7 @@ def show_comparison_page(symbols: List[str]):
         
         for idx, symbol in enumerate(selected_symbols):
             status_text.text(f"{symbol}のデータを取得中... ({idx+1}/{len(selected_symbols)})")
-            data = get_symbol_detail_data(symbol)
+            data = get_symbol_detail_data_cached(symbol)
             if data:
                 comparison_data.append(data)
             progress_bar.progress((idx + 1) / len(selected_symbols))
@@ -531,7 +614,7 @@ def show_settings_page():
     
     st.subheader("設定情報")
     
-    config = load_config()
+    config = load_config_cached()
     
     st.write(f"**設定ファイル**: config.json")
     st.write(f"**監視銘柄数**: {len(config.get('symbols', []))}")

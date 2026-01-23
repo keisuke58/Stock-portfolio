@@ -13,15 +13,13 @@ from scheduler.daily_runner import DailyRunner
 
 def main():
     """メイン処理"""
-    if len(sys.argv) < 2:
-        print("Usage: python run_daily.py <config.json> [max_assets]")
-        print("  max_assets: 分析する最大資産数（デフォルト: 200）")
-        sys.exit(1)
-    
-    config_path = sys.argv[1]
+    config_path = None
     max_assets = 200
     
-    if len(sys.argv) > 2:
+    if len(sys.argv) >= 2:
+        config_path = sys.argv[1]
+    
+    if len(sys.argv) >= 3:
         try:
             max_assets = int(sys.argv[2])
         except ValueError:

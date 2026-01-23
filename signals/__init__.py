@@ -2,6 +2,7 @@
 Signals層: WATCH/BASE/BUY 判定（状態機械）
 """
 from .state_machine import StateMachine, determine_state, is_crypto_symbol
+from .explainer import SignalExplainer
 # signals.pyファイルから必要な関数をインポート
 import sys
 import os
@@ -20,4 +21,4 @@ else:
     # フォールバック: 直接インポートを試みる
     from signals import get_historical_prices, get_current_price, calculate_5day_high_breakout
 
-__all__ = ['StateMachine', 'determine_state', 'is_crypto_symbol', 'get_historical_prices', 'get_current_price', 'calculate_5day_high_breakout']
+__all__ = ['StateMachine', 'determine_state', 'is_crypto_symbol', 'SignalExplainer', 'get_historical_prices', 'get_current_price', 'calculate_5day_high_breakout']

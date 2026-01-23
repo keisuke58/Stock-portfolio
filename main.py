@@ -7,6 +7,7 @@ import sys
 import time
 import requests
 from datetime import datetime
+from config.config_loader import load_all_config
 from state_store import StateStore
 from signals import determine_state, is_crypto_symbol
 from fetchers import YahooFetcher, CoinGeckoFetcher
@@ -64,14 +65,13 @@ def generate_state_change_message(symbol: str, old_state: str, new_state: str, p
 def main():
     """メイン処理"""
     # 設定ファイル読み込み
-    if len(sys.argv) < 2:
-        print("Usage: python main.py <config.json>")
-        sys.exit(1)
+    config_path = None
+    if len(sys.argv) >= 2:
+        config_path = sys.argv[1]
     
-    config_path = sys.argv[1]
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
+        # config/config_loader.py経由で設定を読み込む
+        config = load_all_config(legacy_config_path=config_path)
     except Exception as e:
         print(f"設定ファイル読み込みエラー: {e}")
         sys.exit(1)

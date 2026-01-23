@@ -3,12 +3,21 @@
 """
 import streamlit as st
 from typing import Dict, Optional
-from streamlit_components.chart_components import create_price_chart, create_radar_chart
+from streamlit_components.chart_components import (
+    create_price_chart, 
+    create_radar_chart,
+    create_candlestick_chart,
+    create_volume_chart,
+    create_price_volume_chart
+)
 from streamlit_components.metrics_display import (
     display_financial_metrics,
     display_score_breakdown,
     display_investment_summary
 )
+from streamlit_components.export_components import export_chart_button
+from streamlit_components.historical_analysis import render_historical_analysis
+from streamlit_components.insights_display import add_chart_annotations
 from signals import is_crypto_symbol
 
 
@@ -43,19 +52,50 @@ def render_symbol_detail(data: Dict, symbol: str):
     # 価格チャート
     st.subheader("📊 価格チャート")
     
-    col1, col2 = st.columns([3, 1])
+    # チャートタイプ選択
+    chart_type = st.radio(
+        "チャートタイプ",
+        ["ライン", "ローソク足", "出来高", "価格+出来高"],
+        horizontal=True,
+        key="chart_type"
+    )
+    
+    col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
-        period = st.selectbox("期間", [30, 90, 180, 365], index=0)
+        period = st.selectbox("期間", [30, 90, 180, 365], index=0, key="period")
     with col2:
-        show_ath = st.checkbox("ATHライン表示", value=True)
-        show_ma = st.checkbox("移動平均線表示", value=True)
+        show_ath = st.checkbox("ATHライン表示", value=True, key="show_ath")
+    with col3:
+        show_ma = st.checkbox("移動平均線表示", value=True, key="show_ma")
     
     prices = data.get('historical_prices', [])
-    if prices:
-        fig = create_price_chart(symbol, prices, period, show_ath, show_ma)
+    
+    fig = None
+    if chart_type == "ライン":
+        if prices:
+            fig = create_price_chart(symbol, prices, period, show_ath, show_ma)
+            # インサイトアノテーションを追加
+            fig = add_chart_annotations(fig, data, prices)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("価格データがありません")
+    elif chart_type == "ローソク足":
+        show_volume = st.checkbox("出来高を表示", value=False, key="show_volume_candle")
+        fig = create_candlestick_chart(symbol, period, show_ma, show_volume)
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("価格データがありません")
+    elif chart_type == "出来高":
+        show_price = st.checkbox("価格を表示", value=True, key="show_price_volume")
+        fig = create_volume_chart(symbol, period, show_price)
+        st.plotly_chart(fig, use_container_width=True)
+    elif chart_type == "価格+出来高":
+        show_indicators = st.checkbox("テクニカル指標を表示", value=True, key="show_indicators")
+        fig = create_price_volume_chart(symbol, period, show_indicators)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # チャート画像エクスポート
+    if fig is not None:
+        with st.expander("📷 チャート画像をエクスポート"):
+            export_chart_button(fig, chart_name=f"{symbol}_chart")
     
     st.markdown("---")
     
@@ -108,9 +148,15 @@ def render_symbol_detail(data: Dict, symbol: str):
                     analyst_data = data['analyst_data']
                     if analyst_data.get('recommendation'):
                         st.write(f"**推奨**: {analyst_data['recommendation']}")
-                    if analyst_data.get('target_mean_price') and analyst_data.get('current_price'):
-                        target = analyst_data['target_mean_price']
-                        current = analyst_data['current_price']
-                        upside = ((target - current) / current) * 100 if current > 0 else 0
-                        st.write(f"**目標株価**: ${target:.2f}")
-                        st.write(f"**上昇余地**: {upside:+.1f}%")
+                if analyst_data.get('target_mean_price') and analyst_data.get('current_price'):
+                    target = analyst_data['target_mean_price']
+                    current = analyst_data['current_price']
+                    upside = ((target - current) / current) * 100 if current > 0 else 0
+                    st.write(f"**目標株価**: ${target:.2f}")
+                    st.write(f"**上昇余地**: {upside:+.1f}%")
+    
+    # 履歴分析
+    st.markdown("---")
+    historical_data = data.get('historical_scores', [])
+    if historical_data:
+        render_historical_analysis(symbol, historical_data)

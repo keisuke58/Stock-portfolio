@@ -52,8 +52,9 @@ class PriceCache:
             cached_time = datetime.fromisoformat(cached_at)
             expiry_time = cached_time + timedelta(seconds=ttl_seconds)
             return datetime.utcnow() > expiry_time
-        except:
-            return True  # パースエラーは期限切れとみなす
+        except (ValueError, TypeError) as e:
+            # Parse error - treat as expired
+            return True
     
     def get(self, symbol: str, cache_type: str = 'current') -> Optional[Dict]:
         """
@@ -86,7 +87,8 @@ class PriceCache:
         # JSONをパースして返す
         try:
             return json.loads(data_json)
-        except:
+        except (json.JSONDecodeError, TypeError) as e:
+            # Invalid JSON data - return None
             return None
     
     def set(self, symbol: str, data: Dict, cache_type: str = 'current', ttl_seconds: int = 3600):

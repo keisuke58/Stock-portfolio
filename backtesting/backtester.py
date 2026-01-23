@@ -1,12 +1,14 @@
 """
 バックテストモジュール
 過去データで予測精度を検証
+日次検証、手数料/スリッページ/最大DD計算対応
 """
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 import json
 import os
 import sys
+import math
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,17 +18,44 @@ from scoring import VMSScorer
 from state_machine import StateMachine
 from signals import is_crypto_symbol
 from cache import PriceCache
+from selector.daily_selector import DailySelector
 
 
 class Backtester:
     """バックテストクラス"""
     
-    def __init__(self):
-        """初期化"""
+    # デフォルト設定
+    DEFAULT_ENTRY_FEE_RATE = 0.001  # 0.1%
+    DEFAULT_EXIT_FEE_RATE = 0.001   # 0.1%
+    DEFAULT_BUY_SLIPPAGE = 0.0005   # 0.05%
+    DEFAULT_SELL_SLIPPAGE = 0.0005  # 0.05%
+    
+    def __init__(
+        self,
+        entry_fee_rate: float = DEFAULT_ENTRY_FEE_RATE,
+        exit_fee_rate: float = DEFAULT_EXIT_FEE_RATE,
+        buy_slippage: float = DEFAULT_BUY_SLIPPAGE,
+        sell_slippage: float = DEFAULT_SELL_SLIPPAGE
+    ):
+        """
+        初期化
+        
+        Args:
+            entry_fee_rate: エントリー手数料率（デフォルト: 0.1%）
+            exit_fee_rate: エグジット手数料率（デフォルト: 0.1%）
+            buy_slippage: 買いスリッページ率（デフォルト: 0.05%）
+            sell_slippage: 売りスリッページ率（デフォルト: 0.05%）
+        """
         self.cache = PriceCache()
         self.yahoo_fetcher = YahooFetcher(self.cache)
         self.coingecko_fetcher = CoinGeckoFetcher(self.cache)
         self.state_machine = StateMachine(self.yahoo_fetcher, self.coingecko_fetcher)
+        self.selector = DailySelector()
+        
+        self.entry_fee_rate = entry_fee_rate
+        self.exit_fee_rate = exit_fee_rate
+        self.buy_slippage = buy_slippage
+        self.sell_slippage = sell_slippage
     
     def backtest_symbol(
         self,
@@ -320,3 +349,425 @@ class Backtester:
             'correct_predictions': correct_predictions,
             'accuracy': accuracy
         }
+    
+    def calculate_fees(self, price: float, quantity: float, is_entry: bool = True) -> float:
+        """
+        手数料を計算
+        
+        Args:
+            price: 価格
+            quantity: 数量
+            is_entry: True=エントリー、False=エグジット
+        
+        Returns:
+            手数料（金額）
+        """
+        fee_rate = self.entry_fee_rate if is_entry else self.exit_fee_rate
+        return price * quantity * fee_rate
+    
+    def apply_slippage(self, price: float, is_buy: bool = True) -> float:
+        """
+        スリッページを適用
+        
+        Args:
+            price: 価格
+            is_buy: True=買い、False=売り
+        
+        Returns:
+            スリッページ適用後の価格
+        """
+        slippage = self.buy_slippage if is_buy else self.sell_slippage
+        if is_buy:
+            return price * (1 + slippage)  # 買い: 価格が上がる
+        else:
+            return price * (1 - slippage)  # 売り: 価格が下がる
+    
+    def calculate_max_drawdown(self, equity_curve: List[float]) -> float:
+        """
+        最大ドローダウンを計算
+        
+        Args:
+            equity_curve: エクイティカーブ（時系列の資産価値リスト）
+        
+        Returns:
+            最大ドローダウン（%、負の値）
+        """
+        if not equity_curve or len(equity_curve) < 2:
+            return 0.0
+        
+        max_dd = 0.0
+        peak = equity_curve[0]
+        
+        for value in equity_curve:
+            if value > peak:
+                peak = value
+            else:
+                dd = ((value - peak) / peak) * 100
+                if dd < max_dd:
+                    max_dd = dd
+        
+        return max_dd
+    
+    def calculate_sharpe_ratio(
+        self,
+        returns: List[float],
+        risk_free_rate: float = 0.0
+    ) -> float:
+        """
+        シャープレシオを計算
+        
+        Args:
+            returns: リターンのリスト（%）
+            risk_free_rate: リスクフリーレート（%、デフォルト: 0%）
+        
+        Returns:
+            シャープレシオ
+        """
+        if not returns or len(returns) < 2:
+            return 0.0
+        
+        import statistics
+        
+        # 平均リターン
+        avg_return = statistics.mean(returns)
+        
+        # 標準偏差
+        std_dev = statistics.stdev(returns) if len(returns) > 1 else 0.0
+        
+        if std_dev == 0:
+            return 0.0
+        
+        # シャープレシオ = (平均リターン - リスクフリーレート) / 標準偏差
+        sharpe = (avg_return - risk_free_rate) / std_dev
+        
+        return sharpe
+    
+    def backtest_strategy_daily(
+        self,
+        symbols: List[str],
+        start_date: datetime,
+        end_date: datetime,
+        initial_capital: float = 100000.0,
+        stop_loss_pct: float = -10.0,
+        take_profit_pct: float = 20.0
+    ) -> Dict:
+        """
+        日次戦略バックテスト（selector→signals→scoringの戦略を日次で検証）
+        
+        Args:
+            symbols: シンボルのリスト
+            start_date: 開始日
+            end_date: 終了日
+            initial_capital: 初期資本（デフォルト: $100,000）
+            stop_loss_pct: ストップロス（%、デフォルト: -10%）
+            take_profit_pct: 利確（%、デフォルト: +20%）
+        
+        Returns:
+            バックテスト結果の辞書
+        """
+        results = {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'initial_capital': initial_capital,
+            'final_capital': initial_capital,
+            'total_return': 0.0,
+            'max_drawdown': 0.0,
+            'sharpe_ratio': 0.0,
+            'win_rate': 0.0,
+            'total_trades': 0,
+            'total_fees': 0.0,
+            'total_slippage': 0.0,
+            'daily_returns': [],
+            'equity_curve': [initial_capital],
+            'trades': []
+        }
+        
+        # ポジション管理
+        positions = {}  # {symbol: {'entry_price': float, 'entry_date': datetime, 'quantity': float}}
+        capital = initial_capital
+        equity_curve = [initial_capital]
+        daily_returns = []
+        trades = []
+        
+        # 日次でループ
+        current_date = start_date
+        while current_date <= end_date:
+            try:
+                # その日の候補を分析
+                candidates = []
+                for symbol in symbols:
+                    try:
+                        # 価格データを取得
+                        if is_crypto_symbol(symbol):
+                            prices = self.coingecko_fetcher.get_historical_prices(
+                                symbol, days=30, end_date=current_date
+                            )
+                        else:
+                            prices = self.yahoo_fetcher.get_historical_prices(
+                                symbol, days=30, end_date=current_date
+                            )
+                        
+                        if not prices:
+                            continue
+                        
+                        # 特徴量を計算
+                        features = FeatureCalculator.calculate_all_features(prices)
+                        current_price = prices[-1][1]
+                        
+                        # 状態を判定
+                        old_state = None
+                        new_state = self.state_machine.determine_state(symbol, old_state)
+                        
+                        # スコアを計算
+                        scores = VMSScorer.calculate_all_scores(
+                            features,
+                            new_state,
+                            pe_ratio=None,
+                            quality_score=3,
+                            fundamental_data=None,
+                            events=None,
+                            analyst_data=None,
+                            use_dynamic_weights=False
+                        )
+                        
+                        # 候補として追加
+                        candidates.append({
+                            'symbol': symbol,
+                            'current_state': new_state,
+                            'total_score': scores['total_score'],
+                            'value_score': scores['value_score'],
+                            'momentum_score': scores['momentum_score'],
+                            'stability_score': scores['stability_score'],
+                            'current_price': current_price,
+                            'features': features
+                        })
+                    except Exception as e:
+                        print(f"Error analyzing {symbol} on {current_date}: {e}")
+                        continue
+                
+                # セレクタで「今日の1個」を選出
+                daily_pick = self.selector.select_daily_pick(candidates)
+                
+                # 既存ポジションのエグジット判定
+                positions_to_close = []
+                for symbol, position in positions.items():
+                    entry_price = position['entry_price']
+                    entry_date = position['entry_date']
+                    
+                    # 現在価格を取得
+                    try:
+                        if is_crypto_symbol(symbol):
+                            prices = self.coingecko_fetcher.get_historical_prices(
+                                symbol, days=1, end_date=current_date
+                            )
+                        else:
+                            prices = self.yahoo_fetcher.get_historical_prices(
+                                symbol, days=1, end_date=current_date
+                            )
+                        
+                        if not prices:
+                            continue
+                        
+                        current_price = prices[-1][1]
+                        # スリッページ適用
+                        exit_price = self.apply_slippage(current_price, is_buy=False)
+                        
+                        # リターンを計算
+                        return_pct = ((exit_price - entry_price) / entry_price) * 100
+                        
+                        # エグジット条件チェック
+                        should_exit = False
+                        exit_reason = ""
+                        
+                        # ストップロス
+                        if return_pct <= stop_loss_pct:
+                            should_exit = True
+                            exit_reason = "ストップロス"
+                        
+                        # 利確
+                        if return_pct >= take_profit_pct:
+                            should_exit = True
+                            exit_reason = "利確"
+                        
+                        # 次の選出日（簡易版: 7日経過）
+                        days_held = (current_date - entry_date).days
+                        if days_held >= 7:
+                            should_exit = True
+                            exit_reason = "保有期間満了"
+                        
+                        if should_exit:
+                            positions_to_close.append((symbol, exit_price, exit_reason))
+                    except Exception as e:
+                        print(f"Error checking position {symbol} on {current_date}: {e}")
+                        continue
+                
+                # ポジションをクローズ
+                for symbol, exit_price, exit_reason in positions_to_close:
+                    position = positions.pop(symbol)
+                    quantity = position['quantity']
+                    entry_price = position['entry_price']
+                    
+                    # エグジット手数料
+                    exit_fee = self.calculate_fees(exit_price, quantity, is_entry=False)
+                    
+                    # 売却金額
+                    exit_value = exit_price * quantity - exit_fee
+                    
+                    # リターン
+                    return_pct = ((exit_price - entry_price) / entry_price) * 100
+                    
+                    # 資本を更新
+                    capital = exit_value
+                    
+                    # トレード記録
+                    trade = {
+                        'symbol': symbol,
+                        'entry_date': position['entry_date'].isoformat(),
+                        'exit_date': current_date.isoformat(),
+                        'entry_price': entry_price,
+                        'exit_price': exit_price,
+                        'quantity': quantity,
+                        'return_pct': return_pct,
+                        'exit_reason': exit_reason,
+                        'entry_fee': position.get('entry_fee', 0),
+                        'exit_fee': exit_fee
+                    }
+                    trades.append(trade)
+                    
+                    results['total_trades'] += 1
+                    results['total_fees'] += position.get('entry_fee', 0) + exit_fee
+                
+                # 新しいポジションをエントリー（資本があれば）
+                if daily_pick and capital > 0:
+                    symbol = daily_pick['symbol']
+                    entry_price = daily_pick['current_price']
+                    
+                    # スリッページ適用
+                    entry_price_with_slippage = self.apply_slippage(entry_price, is_buy=True)
+                    
+                    # エントリー手数料を考慮して数量を計算
+                    available_capital = capital * 0.95  # 95%を使用（安全マージン）
+                    quantity = available_capital / (entry_price_with_slippage * (1 + self.entry_fee_rate))
+                    
+                    # エントリー手数料
+                    entry_fee = self.calculate_fees(entry_price_with_slippage, quantity, is_entry=True)
+                    
+                    # 実際の投資額
+                    investment = entry_price_with_slippage * quantity + entry_fee
+                    
+                    if investment <= capital:
+                        positions[symbol] = {
+                            'entry_price': entry_price_with_slippage,
+                            'entry_date': current_date,
+                            'quantity': quantity,
+                            'entry_fee': entry_fee
+                        }
+                        capital -= investment
+                        results['total_fees'] += entry_fee
+                
+                # エクイティカーブを更新
+                current_equity = capital
+                for symbol, position in positions.items():
+                    try:
+                        if is_crypto_symbol(symbol):
+                            prices = self.coingecko_fetcher.get_historical_prices(
+                                symbol, days=1, end_date=current_date
+                            )
+                        else:
+                            prices = self.yahoo_fetcher.get_historical_prices(
+                                symbol, days=1, end_date=current_date
+                            )
+                        
+                        if prices:
+                            current_price = prices[-1][1]
+                            current_equity += current_price * position['quantity']
+                    except:
+                        pass
+                
+                equity_curve.append(current_equity)
+                
+                # 日次リターンを計算
+                if len(equity_curve) > 1:
+                    daily_return = ((current_equity - equity_curve[-2]) / equity_curve[-2]) * 100
+                    daily_returns.append(daily_return)
+                
+            except Exception as e:
+                print(f"Error on {current_date}: {e}")
+            
+            current_date += timedelta(days=1)
+        
+        # 最終的なポジションをクローズ
+        for symbol, position in positions.items():
+            try:
+                if is_crypto_symbol(symbol):
+                    prices = self.coingecko_fetcher.get_historical_prices(
+                        symbol, days=1, end_date=end_date
+                    )
+                else:
+                    prices = self.yahoo_fetcher.get_historical_prices(
+                        symbol, days=1, end_date=end_date
+                    )
+                
+                if prices:
+                    exit_price = self.apply_slippage(prices[-1][1], is_buy=False)
+                    quantity = position['quantity']
+                    entry_price = position['entry_price']
+                    
+                    exit_fee = self.calculate_fees(exit_price, quantity, is_entry=False)
+                    exit_value = exit_price * quantity - exit_fee
+                    
+                    capital += exit_value
+                    return_pct = ((exit_price - entry_price) / entry_price) * 100
+                    
+                    trade = {
+                        'symbol': symbol,
+                        'entry_date': position['entry_date'].isoformat(),
+                        'exit_date': end_date.isoformat(),
+                        'entry_price': entry_price,
+                        'exit_price': exit_price,
+                        'quantity': quantity,
+                        'return_pct': return_pct,
+                        'exit_reason': '期間終了',
+                        'entry_fee': position.get('entry_fee', 0),
+                        'exit_fee': exit_fee
+                    }
+                    trades.append(trade)
+                    
+                    results['total_trades'] += 1
+                    results['total_fees'] += position.get('entry_fee', 0) + exit_fee
+            except Exception as e:
+                print(f"Error closing position {symbol}: {e}")
+        
+        # 最終結果を計算
+        final_capital = capital
+        total_return = ((final_capital - initial_capital) / initial_capital) * 100
+        
+        # 最大ドローダウン
+        max_dd = self.calculate_max_drawdown(equity_curve)
+        
+        # シャープレシオ
+        sharpe_ratio = self.calculate_sharpe_ratio(daily_returns) if daily_returns else 0.0
+        
+        # 勝率
+        winning_trades = [t for t in trades if t['return_pct'] > 0]
+        win_rate = len(winning_trades) / len(trades) if trades else 0.0
+        
+        # スリッページ合計（簡易計算）
+        total_slippage = sum(
+            abs(t['entry_price'] - t.get('original_entry_price', t['entry_price'])) * t['quantity']
+            for t in trades
+        )
+        
+        results.update({
+            'final_capital': final_capital,
+            'total_return': total_return,
+            'max_drawdown': max_dd,
+            'sharpe_ratio': sharpe_ratio,
+            'win_rate': win_rate,
+            'total_slippage': total_slippage,
+            'daily_returns': daily_returns,
+            'equity_curve': equity_curve,
+            'trades': trades
+        })
+        
+        return results

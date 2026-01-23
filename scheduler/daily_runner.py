@@ -11,6 +11,7 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from config.config_loader import load_all_config
 from cache import PriceCache
 from fetchers import YahooFetcher, CoinGeckoFetcher
 from features import FeatureCalculator
@@ -29,10 +30,14 @@ from visualization import ReportGenerator
 class DailyRunner:
     """1日1回実行するメインロジック"""
     
-    def __init__(self, config_path: str):
-        """設定ファイルから初期化"""
-        with open(config_path, 'r', encoding='utf-8') as f:
-            self.config = json.load(f)
+    def __init__(self, config_path: str = None):
+        """設定ファイルから初期化
+        
+        Args:
+            config_path: 既存のconfig.jsonのパス（後方互換性のため。Noneの場合は新しい設定ファイルを使用）
+        """
+        # config/config_loader.py経由で設定を読み込む
+        self.config = load_all_config(legacy_config_path=config_path)
         
         # コンポーネント初期化
         self.cache = PriceCache()

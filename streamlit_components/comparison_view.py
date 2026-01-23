@@ -7,7 +7,9 @@ from typing import List, Dict
 from streamlit_components.chart_components import (
     create_score_comparison_chart,
     create_radar_chart,
-    create_price_chart
+    create_price_chart,
+    create_correlation_heatmap,
+    create_metrics_heatmap
 )
 
 
@@ -80,6 +82,34 @@ def render_comparison_view(comparison_data: List[Dict]):
                 st.plotly_chart(fig, use_container_width=True)
             else:
                 st.warning(f"{symbol}: データなし")
+    
+    st.markdown("---")
+    
+    # 相関分析
+    symbols_list = [item.get('symbol', 'N/A') for item in comparison_data]
+    if len(symbols_list) >= 2:
+        st.subheader("🔗 相関分析")
+        col1, col2 = st.columns(2)
+        with col1:
+            correlation_days = st.selectbox("相関計算期間", [30, 60, 90, 180], index=2, key="correlation_days")
+        with col2:
+            correlation_method = st.selectbox("相関係数", ["pearson", "spearman", "kendall"], index=0, key="correlation_method")
+        
+        try:
+            correlation_fig = create_correlation_heatmap(symbols_list, days=correlation_days, method=correlation_method)
+            st.plotly_chart(correlation_fig, use_container_width=True)
+        except Exception as e:
+            st.warning(f"相関分析の生成に失敗しました: {e}")
+    
+    st.markdown("---")
+    
+    # メトリクスヒートマップ
+    st.subheader("🔥 メトリクスヒートマップ")
+    try:
+        metrics_fig = create_metrics_heatmap(comparison_data)
+        st.plotly_chart(metrics_fig, use_container_width=True)
+    except Exception as e:
+        st.warning(f"ヒートマップの生成に失敗しました: {e}")
     
     st.markdown("---")
     

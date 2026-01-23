@@ -1,17 +1,84 @@
 """
 Discord通知モジュール
 状態変化 or Daily pick を通知
+スコア閾値・異常検知・レジーム変化通知対応
 """
 import requests
-from typing import Optional
-from datetime import datetime
+from typing import Optional, Dict, List
+from datetime import datetime, timedelta
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from optimization.weight_optimizer import MarketRegime, WeightOptimizer
+
+
+class NotificationThrottler:
+    """通知抑制ロジック（クールダウン）"""
+    
+    def __init__(self, cooldown_hours: int = 24):
+        """
+        初期化
+        
+        Args:
+            cooldown_hours: クールダウン時間（時間、デフォルト: 24時間）
+        """
+        self.cooldown_hours = cooldown_hours
+        self.last_notified = {}  # {(symbol, notification_type): datetime}
+    
+    def should_notify(self, symbol: str, notification_type: str) -> bool:
+        """
+        通知すべきか判定
+        
+        Args:
+            symbol: シンボル名
+            notification_type: 通知タイプ（'score_threshold', 'anomaly', 'regime_change', 'state_change'）
+        
+        Returns:
+            True=通知すべき、False=抑制
+        """
+        # 異常検知は常に通知（例外）
+        if notification_type == 'anomaly':
+            return True
+        
+        key = (symbol, notification_type)
+        last_time = self.last_notified.get(key)
+        
+        if last_time is None:
+            return True
+        
+        # クールダウン時間をチェック
+        time_since_last = datetime.utcnow() - last_time
+        if time_since_last >= timedelta(hours=self.cooldown_hours):
+            return True
+        
+        return False
+    
+    def mark_notified(self, symbol: str, notification_type: str):
+        """
+        通知済みを記録
+        
+        Args:
+            symbol: シンボル名
+            notification_type: 通知タイプ
+        """
+        key = (symbol, notification_type)
+        self.last_notified[key] = datetime.utcnow()
 
 
 class DiscordNotifier:
     """Discord Webhookに通知を送信するクラス"""
     
-    def __init__(self, webhook_url: str):
+    def __init__(self, webhook_url: str, cooldown_hours: int = 24):
+        """
+        初期化
+        
+        Args:
+            webhook_url: Discord Webhook URL
+            cooldown_hours: クールダウン時間（時間、デフォルト: 24時間）
+        """
         self.webhook_url = webhook_url
+        self.throttler = NotificationThrottler(cooldown_hours=cooldown_hours)
     
     def send(self, message: str) -> bool:
         """メッセージを送信"""
@@ -245,4 +312,205 @@ class DiscordNotifier:
     def notify_daily_pick(self, daily_pick: dict) -> bool:
         """Daily pickを通知"""
         message = self.format_daily_pick_message(daily_pick)
+        return self.send(message)
+    
+    def format_score_threshold_message(
+        self,
+        symbol: str,
+        score: float,
+        threshold: float,
+        direction: str = 'above'
+    ) -> str:
+        """
+        スコア閾値通知メッセージを生成
+        
+        Args:
+            symbol: シンボル名
+            score: 現在のスコア
+            threshold: 閾値
+            direction: 'above'（上回った）または 'below'（下回った）
+        """
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        
+        if direction == 'above':
+            emoji = '📈'
+            msg = f"{emoji} **スコア閾値到達: {symbol}**\n"
+            msg += f"スコア: **{score:.1f}点**（閾値: {threshold:.1f}点を上回りました）\n"
+        else:
+            emoji = '📉'
+            msg = f"{emoji} **スコア閾値下落: {symbol}**\n"
+            msg += f"スコア: **{score:.1f}点**（閾値: {threshold:.1f}点を下回りました）\n"
+        
+        msg += f"時刻: {timestamp}\n"
+        
+        # URL
+        from signals import is_crypto_symbol
+        if is_crypto_symbol(symbol):
+            msg += f"`https://www.coingecko.com/en/coins/{symbol.lower()}`"
+        else:
+            msg += f"`https://finance.yahoo.com/quote/{symbol.upper()}`"
+        
+        return msg
+    
+    def format_anomaly_message(
+        self,
+        symbol: str,
+        anomaly_type: str,
+        details: Dict
+    ) -> str:
+        """
+        異常検知通知メッセージを生成
+        
+        Args:
+            symbol: シンボル名
+            anomaly_type: 異常タイプ（'price_spike', 'volume_surge', 'volatility_spike'）
+            details: 詳細情報
+        """
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        
+        emoji = '🚨'
+        msg = f"{emoji} **異常検知: {symbol}**\n"
+        
+        if anomaly_type == 'price_spike':
+            old_price = details.get('old_price')
+            new_price = details.get('new_price')
+            change_pct = details.get('change_pct')
+            time_window = details.get('time_window', '1時間')
+            
+            msg += f"**価格急変**\n"
+            msg += f"価格: ${old_price:,.2f} → ${new_price:,.2f} ({change_pct:+.1f}%)\n"
+            msg += f"時間窓: {time_window}\n"
+        
+        elif anomaly_type == 'volume_surge':
+            current_volume = details.get('current_volume')
+            avg_volume = details.get('avg_volume')
+            volume_ratio = details.get('volume_ratio')
+            
+            msg += f"**出来高急増**\n"
+            msg += f"現在出来高: {current_volume:,.0f}\n"
+            msg += f"平均出来高: {avg_volume:,.0f}\n"
+            msg += f"比率: {volume_ratio:.0f}%\n"
+        
+        elif anomaly_type == 'volatility_spike':
+            current_vol = details.get('current_volatility')
+            avg_vol = details.get('avg_volatility')
+            vol_ratio = details.get('volatility_ratio')
+            
+            msg += f"**ボラティリティ急上昇**\n"
+            msg += f"現在ボラ: {current_vol:.1f}%\n"
+            msg += f"平均ボラ: {avg_vol:.1f}%\n"
+            msg += f"比率: {vol_ratio:.0f}%\n"
+        
+        msg += f"時刻: {timestamp}\n"
+        
+        # URL
+        from signals import is_crypto_symbol
+        if is_crypto_symbol(symbol):
+            msg += f"`https://www.coingecko.com/en/coins/{symbol.lower()}`"
+        else:
+            msg += f"`https://finance.yahoo.com/quote/{symbol.upper()}`"
+        
+        return msg
+    
+    def format_regime_change_message(
+        self,
+        old_regime: str,
+        new_regime: str,
+        affected_symbols: List[str] = None
+    ) -> str:
+        """
+        レジーム変化通知メッセージを生成
+        
+        Args:
+            old_regime: 以前のレジーム
+            new_regime: 新しいレジーム
+            affected_symbols: 影響を受けた銘柄のリスト
+        """
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        
+        emoji = '📊'
+        msg = f"{emoji} **レジーム変化**\n"
+        msg += f"市場レジーム: **{old_regime}** → **{new_regime}**\n"
+        
+        regime_names = {
+            'HIGH_VOLATILITY': '高ボラ',
+            'LOW_VOLATILITY': '低ボラ',
+            'NORMAL': '通常'
+        }
+        
+        old_name = regime_names.get(old_regime, old_regime)
+        new_name = regime_names.get(new_regime, new_regime)
+        msg += f"**{old_name}** → **{new_name}**\n"
+        
+        if affected_symbols:
+            msg += f"影響銘柄: {', '.join(affected_symbols[:10])}\n"
+            if len(affected_symbols) > 10:
+                msg += f"（他 {len(affected_symbols) - 10} 銘柄）\n"
+        
+        msg += f"時刻: {timestamp}\n"
+        
+        return msg
+    
+    def notify_score_threshold(
+        self,
+        symbol: str,
+        score: float,
+        threshold: float,
+        direction: str = 'above'
+    ) -> bool:
+        """
+        スコア閾値通知
+        
+        Args:
+            symbol: シンボル名
+            score: 現在のスコア
+            threshold: 閾値
+            direction: 'above'（上回った）または 'below'（下回った）
+        """
+        # 抑制ロジックチェック
+        if not self.throttler.should_notify(symbol, 'score_threshold'):
+            return False
+        
+        message = self.format_score_threshold_message(symbol, score, threshold, direction)
+        success = self.send(message)
+        
+        if success:
+            self.throttler.mark_notified(symbol, 'score_threshold')
+        
+        return success
+    
+    def notify_anomaly(
+        self,
+        symbol: str,
+        anomaly_type: str,
+        details: Dict
+    ) -> bool:
+        """
+        異常検知通知
+        
+        Args:
+            symbol: シンボル名
+            anomaly_type: 異常タイプ
+            details: 詳細情報
+        """
+        # 異常検知は常に通知（抑制なし）
+        message = self.format_anomaly_message(symbol, anomaly_type, details)
+        return self.send(message)
+    
+    def notify_regime_change(
+        self,
+        old_regime: str,
+        new_regime: str,
+        affected_symbols: List[str] = None
+    ) -> bool:
+        """
+        レジーム変化通知
+        
+        Args:
+            old_regime: 以前のレジーム
+            new_regime: 新しいレジーム
+            affected_symbols: 影響を受けた銘柄のリスト
+        """
+        # レジーム変化は抑制なし（市場全体の変化なので）
+        message = self.format_regime_change_message(old_regime, new_regime, affected_symbols)
         return self.send(message)

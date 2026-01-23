@@ -4,12 +4,17 @@ Yahoo Finance (yfinance) から米国株データを取得
 """
 from typing import Optional, List, Tuple
 from datetime import datetime
+import logging
 import yfinance as yf
+import requests
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from cache import PriceCache
+from core.constants import CACHE_TTL, API_TIMEOUTS
+
+logger = logging.getLogger(__name__)
 
 
 class YahooFetcher:
@@ -43,12 +48,18 @@ class YahooFetcher:
                 else:
                     return None
             
-            # キャッシュに保存（1時間TTL）
-            self.cache.set_current_price(symbol, price, ttl_seconds=3600)
+            # キャッシュに保存
+            self.cache.set_current_price(symbol, price, ttl_seconds=CACHE_TTL.CURRENT_PRICE)
             return price
-            
+
+        except requests.RequestException as e:
+            logger.warning(f"Network error fetching Yahoo price for {symbol}: {e}")
+            return None
+        except (KeyError, ValueError, TypeError) as e:
+            logger.warning(f"Data error fetching Yahoo price for {symbol}: {e}")
+            return None
         except Exception as e:
-            print(f"Error fetching Yahoo price for {symbol}: {e}")
+            logger.error(f"Unexpected error fetching Yahoo price for {symbol}: {e}", exc_info=True)
             return None
     
     def get_historical_prices(self, symbol: str, days: int = 30) -> Optional[List[Tuple[datetime, float]]]:
@@ -76,14 +87,20 @@ class YahooFetcher:
                 result.append((dt, price))
             
             result = sorted(result, key=lambda x: x[0])  # 時系列順にソート
-            
-            # キャッシュに保存（24時間TTL）
-            self.cache.set_historical_prices(symbol, result, ttl_seconds=86400)
-            
+
+            # キャッシュに保存
+            self.cache.set_historical_prices(symbol, result, ttl_seconds=CACHE_TTL.HISTORICAL_PRICES)
+
             return result
-            
+
+        except requests.RequestException as e:
+            logger.warning(f"Network error fetching Yahoo historical prices for {symbol}: {e}")
+            return None
+        except (KeyError, ValueError, TypeError) as e:
+            logger.warning(f"Data error fetching Yahoo historical prices for {symbol}: {e}")
+            return None
         except Exception as e:
-            print(f"Error fetching Yahoo historical prices for {symbol}: {e}")
+            logger.error(f"Unexpected error fetching Yahoo historical prices for {symbol}: {e}", exc_info=True)
             return None
     
     def get_metrics(self, symbol: str) -> dict:
@@ -100,13 +117,28 @@ class YahooFetcher:
                 'market_cap': info.get('marketCap'),
                 'enterprise_value': info.get('enterpriseValue'),
             }
+        except requests.RequestException as e:
+            logger.warning(f"Network error fetching Yahoo metrics for {symbol}: {e}")
+            return self._empty_metrics()
+        except (KeyError, ValueError, TypeError) as e:
+            logger.warning(f"Data error fetching Yahoo metrics for {symbol}: {e}")
+            return self._empty_metrics()
         except Exception as e:
-            print(f"Error fetching Yahoo metrics for {symbol}: {e}")
-            return {
-                'pe_ratio': None,
-                'forward_pe': None,
-                'pb_ratio': None,
-                'dividend_yield': None,
-                'market_cap': None,
-                'enterprise_value': None,
-            }
+            logger.error(f"Unexpected error fetching Yahoo metrics for {symbol}: {e}", exc_info=True)
+            return self._empty_metrics()
+
+    @staticmethod
+    def _empty_metrics() -> dict:
+        """Return empty metrics dict."""
+        return {
+            'pe_ratio': None,
+            'forward_pe': None,
+            'pb_ratio': None,
+            'dividend_yield': None,
+            'market_cap': None,
+            'enterprise_value': None,
+        }
+
+    def _get_coingecko_id(self, symbol: str) -> str:
+        """Compatibility method for BaseFetcher interface."""
+        return symbol.lower()

@@ -1,0 +1,107 @@
+[project]
+name = "crypto-price-movement-alerting-bot"
+version = "1.0.0"
+description = "Investment analysis and alert system for crypto and stocks"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Development Team"}
+]
+keywords = ["crypto", "stocks", "alerts", "trading", "analysis"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "mypy>=1.8.0",
+    "types-requests>=2.31.0",
+    "ruff>=0.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests requiring external APIs",
+    "unit: marks tests as unit tests",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+no_implicit_optional = true
+strict_optional = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "yfinance.*",
+    "plotly.*",
+    "streamlit.*",
+    "kaleido.*",
+    "reportlab.*",
+]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+    "B905",   # zip without strict
+    "SIM108", # use ternary instead of if-else
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ARG"]
+"__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "fetchers", "notifiers", "signals", "scoring", "cache"]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "venv/*",
+    ".venv/*",
+    "streamlit_app.py",
+    "setup.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+fail_under = 50
