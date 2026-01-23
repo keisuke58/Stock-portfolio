@@ -1,3 +1,63 @@
-config-*.json
-nohup.out
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Configuration files with sensitive data
+config.json
+api.txt
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated reports and outputs
+reports/
+investment_report.txt
+*.html
+
+# Logs
 logs/
+*.log
+nohup.out
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
