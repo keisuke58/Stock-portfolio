@@ -8,6 +8,14 @@ A comprehensive investment analysis system that watches price movements of crypt
 
 詳細は [VISION.md](./VISION.md) を参照してください。
 
+このプロジェクトは「段階4（招待制Streamlit提供）」を最優先ゴールとする。
+SaaS化（段階5）は将来オプションであり、現時点では以下を絶対に守る：
+
+- UIはStreamlit前提
+- 認証・決済は入れない
+- 外部サービス依存を増やさない
+- 分析の強さ・説明・実績を最優先
+
 ### 必須4要素
 - ✅ **スコア**: 判断を単純化（VMS/ScoreV2実装済み）
 - ✅ **理由説明**: 納得感（explainer.py実装済み）
