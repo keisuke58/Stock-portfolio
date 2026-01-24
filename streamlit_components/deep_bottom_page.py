@@ -104,6 +104,123 @@ ETF_CATEGORIES = {
     'テーマ': ['ARKK', 'ARKG', 'ARKF', 'ARKW', 'ARKQ', 'BOTZ', 'ROBO', 'HACK']
 }
 
+# 日本株（ADR - 米国上場）
+JAPAN_STOCKS = {
+    '自動車': ['TM', 'HMC', 'NSANY', 'FUJHY', 'MZDAY'],
+    'テクノロジー': ['SONY', 'NTDOY', 'KYOCY', 'FANUY', 'KNBWY', 'TOELY'],
+    '金融': ['MUFG', 'SMFG', 'MFG', 'NMR', 'ORIX'],
+    '製造業': ['CAJ', 'HTHIY', 'PCRFY', 'KDDIY', 'ITOCY'],
+    '消費財': ['UNICY', 'APTS', 'BRFS', 'SHCAY', 'SFTBY'],
+    '製薬': ['TAK', 'ALPMY', 'ESALY', 'CHGCY', 'DNZOY'],
+    '通信': ['NTTYY', 'SFTBY', 'KDDIY'],
+    '総合商社': ['MARUY', 'MITSY', 'ITOCY', 'SSUMY', 'SOMLY']
+}
+
+# 日本株主要銘柄（フラットリスト）
+JAPAN_MAJOR = [
+    'TM', 'SONY', 'HMC', 'MUFG', 'NTDOY', 'SMFG', 'NMR', 'TAK', 'KYOCY',
+    'CAJ', 'MFG', 'ORIX', 'FANUY', 'NTTYY', 'ITOCY', 'MARUY', 'HTHIY'
+]
+
+# 欧州株（ADR）
+EUROPE_STOCKS = {
+    'ドイツ': ['SAP', 'SAP', 'DB', 'VWAGY', 'BMWYY', 'SIEGY', 'BAYRY', 'BASFY', 'DTEGY'],
+    'イギリス': ['SHEL', 'BP', 'AZN', 'GSK', 'HSBC', 'UL', 'RIO', 'BTI', 'VOD', 'BCS'],
+    'フランス': ['TTE', 'SNY', 'LVMUY', 'OR', 'BNPQY', 'CSGFY', 'EADSY'],
+    'スイス': ['NSRGY', 'NVS', 'RHHBY', 'UBS', 'CS', 'ABB'],
+    'オランダ': ['ASML', 'ING', 'PHIA', 'UNA'],
+    'スペイン/イタリア': ['TEF', 'BBVA', 'SAN', 'ENEL', 'ENI']
+}
+
+# アジア株（日本以外、ADR）
+ASIA_STOCKS = {
+    '中国': ['BABA', 'JD', 'PDD', 'BIDU', 'NIO', 'XPEV', 'LI', 'TME', 'BILI', 'IQ',
+             'NTES', 'TCEHY', 'MPNGY', 'YUMC', 'ZTO', 'TAL', 'EDU'],
+    '韓国': ['005930.KS', '000660.KS', 'LPL', 'KB', 'SHG', 'PKX'],
+    '台湾': ['TSM', 'UMC', 'ASX', 'HIMX'],
+    'インド': ['INFY', 'WIT', 'HDB', 'IBN', 'SIFY', 'RDY', 'TTM', 'VEDL'],
+    '東南アジア': ['SE', 'GRAB', 'CPNG', 'BEKE']
+}
+
+# テーマ別銘柄
+THEME_STOCKS = {
+    'AI・人工知能': [
+        'NVDA', 'AMD', 'GOOGL', 'MSFT', 'META', 'AMZN', 'CRM', 'PLTR', 'AI', 'PATH',
+        'SNOW', 'MDB', 'DDOG', 'S', 'CRWD', 'ZS', 'OKTA', 'SPLK', 'ESTC', 'CFLT'
+    ],
+    'EV・電気自動車': [
+        'TSLA', 'RIVN', 'LCID', 'NIO', 'XPEV', 'LI', 'FSR', 'GOEV', 'WKHS', 'RIDE',
+        'QS', 'CHPT', 'BLNK', 'EVGO', 'LAC', 'ALB', 'LTHM', 'MP', 'PLUG', 'FCEL'
+    ],
+    'クリーンエネルギー': [
+        'ENPH', 'SEDG', 'RUN', 'NOVA', 'ARRY', 'SPWR', 'FSLR', 'JKS', 'DQ', 'CSIQ',
+        'NEE', 'AES', 'CWEN', 'BEP', 'ORA', 'VWSYF', 'PLUG', 'BE', 'BLDP', 'FCEL'
+    ],
+    '宇宙・航空': [
+        'RKLB', 'SPCE', 'ASTR', 'RDW', 'MNTS', 'BKSY', 'ASTS', 'GSAT', 'IRDM', 'VSAT',
+        'BA', 'LMT', 'NOC', 'RTX', 'GD', 'LHX', 'HII', 'TXT', 'SPR', 'ERJ'
+    ],
+    '量子コンピュータ': [
+        'IBM', 'GOOGL', 'MSFT', 'IONQ', 'RGTI', 'QUBT', 'ARQQ', 'QBTS', 'COLD', 'QTUM'
+    ],
+    'サイバーセキュリティ': [
+        'CRWD', 'PANW', 'ZS', 'FTNT', 'OKTA', 'S', 'NET', 'CYBR', 'TENB', 'RPD',
+        'VRNS', 'SAIL', 'QLYS', 'FEYE', 'MIME', 'NTCT', 'CACI', 'LDOS', 'BAH', 'SAIC'
+    ],
+    'メタバース・ゲーム': [
+        'META', 'RBLX', 'U', 'TTWO', 'EA', 'ATVI', 'NTDOY', 'SONY', 'NTES', 'SE',
+        'BILI', 'DOYU', 'HUYA', 'SKLZ', 'PLTK', 'GMBL', 'DKNG', 'PENN', 'MGM', 'WYNN'
+    ],
+    'フィンテック': [
+        'SQ', 'PYPL', 'AFRM', 'UPST', 'SOFI', 'HOOD', 'COIN', 'NU', 'MELI', 'STNE',
+        'PAGS', 'V', 'MA', 'AXP', 'DFS', 'COF', 'ALLY', 'LC', 'OPEN', 'TREE'
+    ],
+    'バイオテック': [
+        'MRNA', 'BNTX', 'NVAX', 'REGN', 'VRTX', 'SGEN', 'ALNY', 'BMRN', 'EXEL', 'INCY',
+        'SRPT', 'IONS', 'BLUE', 'CRSP', 'EDIT', 'NTLA', 'BEAM', 'VERV', 'VCEL', 'FATE'
+    ],
+    '半導体': [
+        'NVDA', 'AMD', 'INTC', 'TSM', 'AVGO', 'QCOM', 'TXN', 'MU', 'AMAT', 'LRCX',
+        'KLAC', 'ASML', 'MRVL', 'ADI', 'NXPI', 'ON', 'SWKS', 'QRVO', 'MPWR', 'MCHP'
+    ],
+    '大麻': [
+        'TLRY', 'CGC', 'ACB', 'CRON', 'OGI', 'HEXO', 'SNDL', 'VFF', 'GRWG', 'CURLF'
+    ],
+    'SPAC・成長株': [
+        'RIVN', 'LCID', 'JOBY', 'LILM', 'ACHR', 'OPEN', 'SOFI', 'CLOV', 'WISH', 'BARK'
+    ]
+}
+
+# 配当株
+DIVIDEND_STOCKS = {
+    '高配当': [
+        'VZ', 'T', 'MO', 'PM', 'XOM', 'CVX', 'IBM', 'ABBV', 'KO', 'PEP',
+        'JNJ', 'PG', 'MMM', 'O', 'MAIN', 'STAG', 'AGNC', 'NLY', 'ARCC', 'PSEC'
+    ],
+    '配当貴族': [
+        'JNJ', 'PG', 'KO', 'PEP', 'MMM', 'ABT', 'ABBV', 'MCD', 'WMT', 'CL',
+        'ED', 'XOM', 'CVX', 'EMR', 'GPC', 'SWK', 'ADP', 'ITW', 'LOW', 'TGT'
+    ],
+    'REIT': [
+        'O', 'STAG', 'NNN', 'WPC', 'STOR', 'ADC', 'EPRT', 'VICI', 'GLPI', 'IIPR',
+        'AMT', 'CCI', 'SBAC', 'DLR', 'EQIX', 'PSA', 'EXR', 'CUBE', 'LSI', 'NSA'
+    ]
+}
+
+# 小型成長株
+SMALL_CAP_GROWTH = [
+    'UPST', 'AFRM', 'HOOD', 'SOFI', 'RKLB', 'IONQ', 'JOBY', 'LILM', 'PATH', 'DOCN',
+    'GTLB', 'CFLT', 'BRZE', 'CWAN', 'TXG', 'DOCS', 'FROG', 'API', 'JAMF', 'SUMO',
+    'ASAN', 'MNDY', 'ZI', 'HUBS', 'PCTY', 'APPN', 'COUP', 'BILL', 'PAYC', 'WK'
+]
+
+# 割安株（バリュー）
+VALUE_STOCKS = [
+    'BRK-B', 'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'USB', 'PNC', 'TFC',
+    'CVX', 'XOM', 'COP', 'EOG', 'SLB', 'VZ', 'T', 'CMCSA', 'CHTR', 'TMUS',
+    'GM', 'F', 'TM', 'HMC', 'STLA', 'MRK', 'PFE', 'BMY', 'GILD', 'AMGN'
+]
+
 
 def analyze_single_symbol(state_machine: StateMachine, symbol: str) -> Optional[Dict]:
     """
@@ -207,33 +324,62 @@ def render_deep_bottom_page(symbols: List[str]):
     # 分析実行セクション
     st.subheader("🔍 銘柄スキャン")
 
-    # タブで分ける
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "🚀 クイック",
-        "🏢 セクター別",
-        "📊 インデックス",
-        "🪙 暗号通貨",
-        "🌐 全銘柄",
-        "📝 カスタム"
-    ])
+    # メインタブ
+    main_tab = st.radio(
+        "カテゴリ",
+        ["🇺🇸 米国株", "🌏 国際株", "🪙 暗号通貨", "🎯 テーマ別", "🛠️ その他"],
+        horizontal=True,
+        key="main_tab"
+    )
 
-    with tab1:
-        render_quick_scan(symbols)
+    st.markdown("---")
 
-    with tab2:
-        render_sector_scan(symbols)
+    if main_tab == "🇺🇸 米国株":
+        tab1, tab2, tab3, tab4 = st.tabs(["🚀 クイック", "🏢 セクター別", "📊 インデックス", "🌐 全銘柄"])
+        with tab1:
+            render_quick_scan(symbols)
+        with tab2:
+            render_sector_scan(symbols)
+        with tab3:
+            render_index_scan(symbols)
+        with tab4:
+            render_full_scan(symbols)
 
-    with tab3:
-        render_index_scan(symbols)
+    elif main_tab == "🌏 国際株":
+        tab1, tab2, tab3, tab4 = st.tabs(["🇯🇵 日本株", "🇪🇺 欧州株", "🇨🇳 中国・アジア株", "🌍 全地域"])
+        with tab1:
+            render_japan_scan(symbols)
+        with tab2:
+            render_europe_scan(symbols)
+        with tab3:
+            render_asia_scan(symbols)
+        with tab4:
+            render_global_scan(symbols)
 
-    with tab4:
-        render_crypto_scan(symbols)
+    elif main_tab == "🪙 暗号通貨":
+        tab1, tab2 = st.tabs(["📊 カテゴリ別", "🔥 全暗号通貨"])
+        with tab1:
+            render_crypto_scan(symbols)
+        with tab2:
+            render_all_crypto_scan(symbols)
 
-    with tab5:
-        render_full_scan(symbols)
+    elif main_tab == "🎯 テーマ別":
+        tab1, tab2, tab3, tab4 = st.tabs(["🤖 テクノロジー", "💰 配当・バリュー", "📈 成長株", "🏷️ 全テーマ"])
+        with tab1:
+            render_tech_theme_scan(symbols)
+        with tab2:
+            render_dividend_scan(symbols)
+        with tab3:
+            render_growth_scan(symbols)
+        with tab4:
+            render_all_theme_scan(symbols)
 
-    with tab6:
-        render_custom_scan(symbols)
+    else:  # その他
+        tab1, tab2 = st.tabs(["📝 カスタム", "⭐ ウォッチリスト"])
+        with tab1:
+            render_custom_scan(symbols)
+        with tab2:
+            render_watchlist_scan(symbols)
 
     # 結果表示
     if st.session_state.deep_bottom_results:
@@ -427,6 +573,432 @@ def render_crypto_scan(symbols: List[str]):
 
     if st.button("🪙 暗号通貨スキャン開始", key="crypto_scan", type="primary"):
         run_scan(scan_symbols)
+
+
+def render_all_crypto_scan(symbols: List[str]):
+    """全暗号通貨スキャン"""
+    st.markdown("**全ての暗号通貨をスキャン**")
+
+    # 全暗号通貨を取得
+    all_crypto = [s for s in symbols if is_crypto_symbol(s)]
+
+    st.info(f"対象: {len(all_crypto)}暗号通貨")
+
+    if all_crypto:
+        with st.expander("スキャン対象を確認"):
+            st.write(", ".join(all_crypto))
+
+    if st.button("🔥 全暗号通貨スキャン", key="all_crypto_scan", type="primary"):
+        if all_crypto:
+            run_scan(all_crypto)
+        else:
+            st.warning("暗号通貨が見つかりません")
+
+
+def render_japan_scan(symbols: List[str]):
+    """日本株スキャン"""
+    st.markdown("**🇯🇵 日本株（ADR - 米国上場）をスキャン**")
+
+    # セクター選択
+    col1, col2 = st.columns(2)
+
+    with col1:
+        selected_sectors = st.multiselect(
+            "セクターを選択",
+            list(JAPAN_STOCKS.keys()),
+            default=["自動車", "テクノロジー"],
+            key="japan_sector"
+        )
+
+    with col2:
+        scan_all = st.checkbox("全ての日本株をスキャン", value=False, key="all_japan")
+
+    if scan_all:
+        scan_list = JAPAN_MAJOR
+    else:
+        scan_list = []
+        for sector in selected_sectors:
+            scan_list.extend(JAPAN_STOCKS.get(sector, []))
+        scan_list = list(dict.fromkeys(scan_list))
+
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    st.info(f"対象: {len(scan_symbols)}銘柄")
+
+    # 主要銘柄表示
+    with st.expander("主要日本株ADR"):
+        st.markdown("""
+        | 銘柄 | 企業名 |
+        |------|--------|
+        | TM | トヨタ自動車 |
+        | SONY | ソニー |
+        | HMC | ホンダ |
+        | MUFG | 三菱UFJ |
+        | NTDOY | 任天堂 |
+        | SMFG | 三井住友FG |
+        | NMR | 野村證券 |
+        | TAK | 武田薬品 |
+        """)
+
+    if st.button("🇯🇵 日本株スキャン開始", key="japan_scan", type="primary"):
+        if scan_symbols:
+            run_scan(scan_symbols)
+        else:
+            st.warning("対象銘柄がリストにありません")
+
+
+def render_europe_scan(symbols: List[str]):
+    """欧州株スキャン"""
+    st.markdown("**🇪🇺 欧州株（ADR）をスキャン**")
+
+    # 国選択
+    selected_countries = st.multiselect(
+        "国を選択",
+        list(EUROPE_STOCKS.keys()),
+        default=["ドイツ", "イギリス"],
+        key="europe_country"
+    )
+
+    scan_list = []
+    for country in selected_countries:
+        scan_list.extend(EUROPE_STOCKS.get(country, []))
+    scan_list = list(dict.fromkeys(scan_list))
+
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    st.info(f"対象: {len(scan_symbols)}銘柄")
+
+    # 国別内訳
+    for country in selected_countries:
+        syms = [s for s in EUROPE_STOCKS.get(country, []) if s in symbols]
+        if syms:
+            st.caption(f"{country}: {', '.join(syms)}")
+
+    if st.button("🇪🇺 欧州株スキャン開始", key="europe_scan", type="primary"):
+        if scan_symbols:
+            run_scan(scan_symbols)
+        else:
+            st.warning("対象銘柄がリストにありません")
+
+
+def render_asia_scan(symbols: List[str]):
+    """アジア株スキャン"""
+    st.markdown("**🌏 アジア株（日本除く、ADR）をスキャン**")
+
+    # 国選択
+    selected_countries = st.multiselect(
+        "国/地域を選択",
+        list(ASIA_STOCKS.keys()),
+        default=["中国", "台湾"],
+        key="asia_country"
+    )
+
+    scan_list = []
+    for country in selected_countries:
+        scan_list.extend(ASIA_STOCKS.get(country, []))
+    scan_list = list(dict.fromkeys(scan_list))
+
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    st.info(f"対象: {len(scan_symbols)}銘柄")
+
+    # 主要銘柄
+    with st.expander("主要アジア株ADR"):
+        st.markdown("""
+        **中国**: BABA (アリババ), JD, PDD, BIDU, NIO, XPEV
+        **台湾**: TSM (TSMC), UMC
+        **韓国**: Samsung (005930.KS), SK Hynix
+        **インド**: INFY, WIT, HDB
+        **東南アジア**: SE (Sea/Shopee), GRAB
+        """)
+
+    if st.button("🌏 アジア株スキャン開始", key="asia_scan", type="primary"):
+        if scan_symbols:
+            run_scan(scan_symbols)
+        else:
+            st.warning("対象銘柄がリストにありません")
+
+
+def render_global_scan(symbols: List[str]):
+    """全地域スキャン"""
+    st.markdown("**🌍 全地域の国際株をスキャン**")
+
+    # 地域選択
+    regions = st.multiselect(
+        "地域を選択",
+        ["日本", "欧州", "中国・アジア"],
+        default=["日本", "欧州", "中国・アジア"],
+        key="global_region"
+    )
+
+    scan_list = []
+
+    if "日本" in regions:
+        scan_list.extend(JAPAN_MAJOR)
+    if "欧州" in regions:
+        for stocks in EUROPE_STOCKS.values():
+            scan_list.extend(stocks)
+    if "中国・アジア" in regions:
+        for stocks in ASIA_STOCKS.values():
+            scan_list.extend(stocks)
+
+    scan_list = list(dict.fromkeys(scan_list))
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("日本", len([s for s in JAPAN_MAJOR if s in symbols]))
+    with col2:
+        eu_count = sum(len([s for s in stocks if s in symbols]) for stocks in EUROPE_STOCKS.values())
+        st.metric("欧州", eu_count)
+    with col3:
+        asia_count = sum(len([s for s in stocks if s in symbols]) for stocks in ASIA_STOCKS.values())
+        st.metric("アジア", asia_count)
+
+    st.info(f"合計対象: {len(scan_symbols)}銘柄")
+
+    if st.button("🌍 全地域スキャン開始", key="global_scan", type="primary"):
+        if scan_symbols:
+            run_scan(scan_symbols)
+        else:
+            st.warning("対象銘柄がリストにありません")
+
+
+def render_tech_theme_scan(symbols: List[str]):
+    """テクノロジーテーマスキャン"""
+    st.markdown("**🤖 テクノロジー関連テーマ**")
+
+    tech_themes = {
+        'AI・人工知能': THEME_STOCKS.get('AI・人工知能', []),
+        '半導体': THEME_STOCKS.get('半導体', []),
+        'サイバーセキュリティ': THEME_STOCKS.get('サイバーセキュリティ', []),
+        '量子コンピュータ': THEME_STOCKS.get('量子コンピュータ', []),
+        'メタバース・ゲーム': THEME_STOCKS.get('メタバース・ゲーム', []),
+        'フィンテック': THEME_STOCKS.get('フィンテック', [])
+    }
+
+    selected_themes = st.multiselect(
+        "テーマを選択",
+        list(tech_themes.keys()),
+        default=["AI・人工知能", "半導体"],
+        key="tech_theme"
+    )
+
+    scan_list = []
+    for theme in selected_themes:
+        scan_list.extend(tech_themes.get(theme, []))
+    scan_list = list(dict.fromkeys(scan_list))
+
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    st.info(f"対象: {len(scan_symbols)}銘柄")
+
+    for theme in selected_themes:
+        syms = [s for s in tech_themes.get(theme, []) if s in symbols]
+        if syms:
+            st.caption(f"{theme}: {len(syms)}銘柄")
+
+    if st.button("🤖 テックテーマスキャン", key="tech_theme_scan", type="primary"):
+        if scan_symbols:
+            run_scan(scan_symbols)
+        else:
+            st.warning("対象銘柄がリストにありません")
+
+
+def render_dividend_scan(symbols: List[str]):
+    """配当・バリュースキャン"""
+    st.markdown("**💰 配当株・バリュー株**")
+
+    category = st.radio(
+        "カテゴリ",
+        ["高配当", "配当貴族", "REIT", "バリュー株"],
+        horizontal=True,
+        key="dividend_category"
+    )
+
+    if category == "バリュー株":
+        scan_list = VALUE_STOCKS
+    else:
+        scan_list = DIVIDEND_STOCKS.get(category, [])
+
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    st.info(f"対象: {len(scan_symbols)}銘柄")
+
+    with st.expander("銘柄リスト"):
+        st.write(", ".join(scan_symbols))
+
+    if st.button("💰 配当・バリュースキャン", key="dividend_scan", type="primary"):
+        if scan_symbols:
+            run_scan(scan_symbols)
+        else:
+            st.warning("対象銘柄がリストにありません")
+
+
+def render_growth_scan(symbols: List[str]):
+    """成長株スキャン"""
+    st.markdown("**📈 成長株・スモールキャップ**")
+
+    growth_options = {
+        'EV・電気自動車': THEME_STOCKS.get('EV・電気自動車', []),
+        'クリーンエネルギー': THEME_STOCKS.get('クリーンエネルギー', []),
+        'バイオテック': THEME_STOCKS.get('バイオテック', []),
+        '宇宙・航空': THEME_STOCKS.get('宇宙・航空', []),
+        'SPAC・成長株': THEME_STOCKS.get('SPAC・成長株', []),
+        '小型成長株': SMALL_CAP_GROWTH
+    }
+
+    selected = st.multiselect(
+        "カテゴリを選択",
+        list(growth_options.keys()),
+        default=["EV・電気自動車", "小型成長株"],
+        key="growth_category"
+    )
+
+    scan_list = []
+    for cat in selected:
+        scan_list.extend(growth_options.get(cat, []))
+    scan_list = list(dict.fromkeys(scan_list))
+
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    st.info(f"対象: {len(scan_symbols)}銘柄")
+
+    # 注意書き
+    st.warning("⚠️ 成長株は変動が大きいため、Deep Bottomシグナルが出やすい傾向があります")
+
+    if st.button("📈 成長株スキャン", key="growth_scan", type="primary"):
+        if scan_symbols:
+            run_scan(scan_symbols)
+        else:
+            st.warning("対象銘柄がリストにありません")
+
+
+def render_all_theme_scan(symbols: List[str]):
+    """全テーマスキャン"""
+    st.markdown("**🏷️ 全テーマから選択**")
+
+    all_themes = list(THEME_STOCKS.keys())
+
+    selected_themes = st.multiselect(
+        "テーマを選択（複数可）",
+        all_themes,
+        default=[],
+        key="all_themes"
+    )
+
+    if not selected_themes:
+        st.info("テーマを選択してください")
+        return
+
+    scan_list = []
+    for theme in selected_themes:
+        scan_list.extend(THEME_STOCKS.get(theme, []))
+    scan_list = list(dict.fromkeys(scan_list))
+
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    st.info(f"対象: {len(scan_symbols)}銘柄")
+
+    # テーマ別内訳
+    for theme in selected_themes:
+        count = len([s for s in THEME_STOCKS.get(theme, []) if s in symbols])
+        st.caption(f"{theme}: {count}銘柄")
+
+    if st.button("🏷️ テーマスキャン", key="all_theme_scan", type="primary"):
+        if scan_symbols:
+            run_scan(scan_symbols)
+        else:
+            st.warning("対象銘柄がリストにありません")
+
+
+def render_watchlist_scan(symbols: List[str]):
+    """ウォッチリストスキャン"""
+    st.markdown("**⭐ ウォッチリスト管理**")
+
+    # ウォッチリスト初期化
+    if 'watchlist' not in st.session_state:
+        st.session_state.watchlist = []
+
+    # 現在のウォッチリスト表示
+    if st.session_state.watchlist:
+        st.success(f"ウォッチリスト: {len(st.session_state.watchlist)}銘柄")
+
+        # 銘柄をタグ表示
+        cols = st.columns(min(len(st.session_state.watchlist), 8))
+        for idx, sym in enumerate(st.session_state.watchlist[:24]):
+            with cols[idx % 8]:
+                st.markdown(f"`{sym}`")
+
+        if len(st.session_state.watchlist) > 24:
+            st.caption(f"... 他 {len(st.session_state.watchlist) - 24}銘柄")
+
+        st.markdown("---")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("⭐ ウォッチリストをスキャン", key="scan_watchlist", type="primary"):
+                run_scan(st.session_state.watchlist)
+        with col2:
+            if st.button("📋 エクスポート", key="export_watchlist"):
+                st.code(",".join(st.session_state.watchlist))
+        with col3:
+            if st.button("🗑️ クリア", key="clear_watchlist"):
+                st.session_state.watchlist = []
+                st.rerun()
+
+    else:
+        st.info("ウォッチリストは空です")
+
+    st.markdown("---")
+
+    # 銘柄追加
+    st.markdown("**銘柄を追加**")
+
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        new_symbols = st.text_input(
+            "銘柄（カンマ区切り）",
+            placeholder="AAPL, BTC, NVDA, TM",
+            key="add_to_watchlist_input"
+        )
+    with col2:
+        if st.button("➕ 追加", key="add_watchlist_btn"):
+            if new_symbols:
+                to_add = [s.strip().upper() for s in new_symbols.split(',') if s.strip()]
+                valid = [s for s in to_add if s in symbols and s not in st.session_state.watchlist]
+                invalid = [s for s in to_add if s not in symbols]
+
+                if valid:
+                    st.session_state.watchlist.extend(valid)
+                    st.success(f"追加: {', '.join(valid)}")
+                if invalid:
+                    st.warning(f"無効: {', '.join(invalid)}")
+                st.rerun()
+
+    # クイック追加オプション
+    st.markdown("**クイック追加**")
+    quick_add = st.selectbox(
+        "プリセット",
+        ["選択...", "主要米国株", "FAANG+", "日本株ADR", "主要暗号通貨", "高配当株"],
+        key="quick_add_preset"
+    )
+
+    if quick_add != "選択...":
+        preset_symbols = {
+            "主要米国株": ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'],
+            "FAANG+": ['META', 'AAPL', 'AMZN', 'NFLX', 'GOOGL', 'MSFT', 'NVDA'],
+            "日本株ADR": JAPAN_MAJOR[:10],
+            "主要暗号通貨": ['BTC', 'ETH', 'SOL', 'BNB', 'ADA', 'XRP'],
+            "高配当株": DIVIDEND_STOCKS.get('高配当', [])[:10]
+        }
+
+        if st.button(f"➕ {quick_add}を追加", key="quick_add_btn"):
+            to_add = preset_symbols.get(quick_add, [])
+            valid = [s for s in to_add if s in symbols and s not in st.session_state.watchlist]
+            st.session_state.watchlist.extend(valid)
+            st.success(f"{len(valid)}銘柄を追加しました")
+            st.rerun()
 
 
 def render_full_scan(symbols: List[str]):
