@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from features import FeatureCalculator
 from fetchers import YahooFetcher, CoinGeckoFetcher
 from core.constants import DEEP_BOTTOM_THRESHOLDS
+from scoring.fundamental_scorer import FundamentalScorer, FundamentalHealth
 
 
 def is_crypto_symbol(symbol: str) -> bool:
@@ -198,7 +199,7 @@ class StateMachine:
         """
         return self.detect_deep_bottom_signal(symbol)
 
-    def check_deep_bottom_advanced(self, symbol: str) -> Tuple[bool, Optional[Dict]]:
+    def check_deep_bottom_advanced(self, symbol: str, include_fundamentals: bool = True) -> Tuple[bool, Optional[Dict]]:
         """
         高度なDEEP_BOTTOM分析（スコアリングシステム）
 
@@ -309,6 +310,45 @@ class StateMachine:
         metrics['signal_strength'] = signal_strength
         metrics['basic_score'] = f"{basic_score}/5"
         metrics['advanced_score'] = f"{advanced_score}/7"
+
+        # ファンダメンタル分析（株式のみ）
+        if include_fundamentals and not is_crypto_symbol(symbol):
+            try:
+                fundamental_scorer = FundamentalScorer()
+                fundamental_result = fundamental_scorer.calculate_score(symbol)
+
+                if fundamental_result:
+                    metrics['fundamental_score'] = fundamental_result.total_score
+                    metrics['fundamental_health'] = fundamental_result.health_status.value
+                    metrics['fundamental_warnings'] = fundamental_result.warnings
+                    metrics['fundamental_details'] = {
+                        'pe_score': fundamental_result.pe_score,
+                        'pb_score': fundamental_result.pb_score,
+                        'fcf_score': fundamental_result.fcf_score,
+                        'debt_score': fundamental_result.debt_score,
+                        'growth_score': fundamental_result.growth_score,
+                    }
+
+                    # 総合スコア調整: テクニカル(75) + ファンダメンタル(25) = 100
+                    if deep_score:
+                        original_score = deep_score.get('total_score', 0)
+                        # テクニカルスコアを75点満点にスケール
+                        technical_adjusted = (original_score / 100) * 75
+                        # ファンダメンタルスコアを加算
+                        adjusted_total = technical_adjusted + fundamental_result.total_score
+                        metrics['adjusted_total_score'] = adjusted_total
+
+                        # ファンダメンタルが弱い場合はシグナル強度を下げる
+                        if fundamental_result.health_status == FundamentalHealth.VALUE_TRAP:
+                            if signal_strength == 'strong':
+                                signal_strength = 'moderate'
+                            elif signal_strength == 'moderate':
+                                signal_strength = 'weak'
+                            metrics['signal_strength'] = signal_strength
+                            metrics['fundamental_adjustment'] = 'downgraded due to value trap risk'
+            except Exception as e:
+                # ファンダメンタル取得失敗は無視（テクニカルのみで判定）
+                pass
 
         # 検出判定（strong または moderate）
         detected = signal_strength in ['strong', 'moderate']

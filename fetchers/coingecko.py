@@ -139,6 +139,59 @@ class CoinGeckoFetcher:
             logger.error(f"Unexpected error fetching CoinGecko historical prices for {symbol}: {e}", exc_info=True)
             return None
 
+    def get_historical_prices_extended(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> Optional[List[Tuple[datetime, float]]]:
+        """
+        指定期間の履歴価格を取得（バックテスト用）
+
+        Args:
+            symbol: 暗号通貨シンボル
+            start_date: 開始日
+            end_date: 終了日
+
+        Returns:
+            [(datetime, price), ...] or None
+        """
+        coin_id = self._get_coin_id(symbol)
+
+        try:
+            # Calculate days from start_date to end_date
+            days = (end_date - start_date).days + 1
+
+            # CoinGecko has limits on free tier, max ~365 days per request
+            # For longer periods, we may need multiple requests
+            url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart'
+            params = {
+                'vs_currency': 'usd',
+                'days': min(days, 365),  # API limit
+                'interval': 'daily'
+            }
+
+            response = requests.get(url, params=params, timeout=API_TIMEOUTS.LONG_RUNNING)
+            response.raise_for_status()
+            data = response.json()
+
+            prices = data.get('prices', [])
+            if not prices:
+                return None
+
+            result = []
+            for ts_ms, price in prices:
+                dt = datetime.fromtimestamp(ts_ms / 1000)
+                # Filter to requested date range
+                if start_date <= dt <= end_date:
+                    result.append((dt, float(price)))
+
+            return sorted(result, key=lambda x: x[0])
+
+        except Exception as e:
+            logger.warning(f"Error fetching extended historical prices for {symbol}: {e}")
+            return None
+
     def _get_coingecko_id(self, symbol: str) -> str:
         """Alias for _get_coin_id for BaseFetcher compatibility."""
         return self._get_coin_id(symbol)

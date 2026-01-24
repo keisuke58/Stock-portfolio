@@ -162,6 +162,60 @@ class NotificationConfig:
 
 
 @dataclass(frozen=True)
+class DeepBottomBacktestConfig:
+    """
+    Configuration for Deep Bottom backtesting.
+    """
+    # Target return to consider a "win"
+    TARGET_RETURN_PCT: float = 50.0  # 50% gain
+
+    # Time window to achieve target return (months)
+    TARGET_PERIOD_MONTHS: int = 12
+
+    # Intervals to check returns (months)
+    CHECK_INTERVALS: tuple = (3, 6, 12)
+
+    # Minimum days between signals to avoid clustering
+    MIN_DAYS_BETWEEN_SIGNALS: int = 30
+
+    # Known crash periods for specialized testing
+    # Format: {'name': {'symbol': str, 'start': str, 'end': str}}
+
+
+@dataclass(frozen=True)
+class FundamentalScoringConfig:
+    """
+    Configuration for fundamental health scoring.
+    Score range: 0-25 points
+    """
+    # P/E Ratio thresholds
+    PE_EXCELLENT: float = 15.0    # Score 6
+    PE_FAIR: float = 25.0         # Score 4
+    PE_GROWTH: float = 40.0       # Score 2
+    PE_NEGATIVE_PENALTY: float = -3.0  # Negative earnings penalty
+
+    # P/B Ratio thresholds
+    PB_VALUE: float = 1.0         # Score 5 (below book value)
+    PB_FAIR: float = 2.0          # Score 3
+    PB_MAX: float = 3.0           # Score 1
+
+    # Debt/Equity thresholds
+    DEBT_LOW: float = 0.5         # Score 5
+    DEBT_MODERATE: float = 1.0    # Score 3
+    DEBT_HIGH: float = 2.0        # Score 1
+
+    # Revenue growth thresholds
+    GROWTH_HIGH: float = 0.10     # Score 4 (10%+)
+    GROWTH_STABLE: float = 0.0    # Score 2 (0%+)
+
+    # Health status thresholds
+    HEALTHY_MIN_SCORE: int = 15   # >= 15 = HEALTHY
+    MODERATE_MIN_SCORE: int = 10  # >= 10 = MODERATE
+    WEAK_MIN_SCORE: int = 5       # >= 5 = WEAK
+    # < 5 = VALUE_TRAP
+
+
+@dataclass(frozen=True)
 class DeepBottomThresholds:
     """
     Thresholds for deep bottom detection (long-term investing).
@@ -245,3 +299,5 @@ RATE_LIMITING = RateLimiting()
 NOTIFICATION_CONFIG = NotificationConfig()
 SELECTION_CONFIG = SelectionConfig()
 DEEP_BOTTOM_THRESHOLDS = DeepBottomThresholds()
+DEEP_BOTTOM_BACKTEST_CONFIG = DeepBottomBacktestConfig()
+FUNDAMENTAL_SCORING_CONFIG = FundamentalScoringConfig()

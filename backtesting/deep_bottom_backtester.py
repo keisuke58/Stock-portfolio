@@ -1,0 +1,614 @@
+"""
+Deep Bottom Backtesting Engine
+Validates historical performance of Deep Bottom signals
+
+Tests if Deep Bottom signals historically led to significant gains (50%+)
+within 12 months.
+"""
+from typing import List, Dict, Optional, Tuple
+from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from enum import Enum
+import logging
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from signals.state_machine import StateMachine, is_crypto_symbol
+from features.indicators import FeatureCalculator
+from fetchers import YahooFetcher, CoinGeckoFetcher
+from core.constants import DEEP_BOTTOM_BACKTEST_CONFIG, DEEP_BOTTOM_THRESHOLDS
+
+logger = logging.getLogger(__name__)
+
+
+class SignalType(Enum):
+    """Type of Deep Bottom signal detected"""
+    BASIC = "basic"
+    ADVANCED = "advanced"
+    STRONG = "strong"
+    MODERATE = "moderate"
+    WEAK = "weak"
+
+
+@dataclass
+class DeepBottomSignal:
+    """Represents a detected Deep Bottom signal"""
+    symbol: str
+    signal_date: datetime
+    signal_type: SignalType
+    entry_price: float
+    drawdown_pct: float
+    rsi: float
+    score: Optional[float] = None
+    metrics_snapshot: Dict = field(default_factory=dict)
+
+
+@dataclass
+class SignalOutcome:
+    """Tracks the outcome of a Deep Bottom signal"""
+    signal: DeepBottomSignal
+    return_3m: Optional[float] = None
+    return_6m: Optional[float] = None
+    return_12m: Optional[float] = None
+    max_drawdown_after: float = 0.0
+    days_to_50pct: Optional[int] = None
+    peak_return: float = 0.0
+    is_winner: bool = False  # True if achieved 50%+ within 12 months
+
+    def to_dict(self) -> Dict:
+        return {
+            'symbol': self.signal.symbol,
+            'signal_date': self.signal.signal_date.isoformat(),
+            'signal_type': self.signal.signal_type.value,
+            'entry_price': self.signal.entry_price,
+            'drawdown_pct': self.signal.drawdown_pct,
+            'rsi': self.signal.rsi,
+            'score': self.signal.score,
+            'return_3m': self.return_3m,
+            'return_6m': self.return_6m,
+            'return_12m': self.return_12m,
+            'max_drawdown_after': self.max_drawdown_after,
+            'days_to_50pct': self.days_to_50pct,
+            'peak_return': self.peak_return,
+            'is_winner': self.is_winner,
+        }
+
+
+@dataclass
+class BacktestResult:
+    """Aggregated backtest results"""
+    symbol: str
+    start_date: datetime
+    end_date: datetime
+    total_signals: int
+    winners: int
+    win_rate: float
+    avg_return_3m: float
+    avg_return_6m: float
+    avg_return_12m: float
+    avg_max_drawdown: float
+    avg_days_to_target: Optional[float]
+    best_signal: Optional[SignalOutcome]
+    worst_signal: Optional[SignalOutcome]
+    outcomes: List[SignalOutcome]
+
+    def to_dict(self) -> Dict:
+        return {
+            'symbol': self.symbol,
+            'start_date': self.start_date.isoformat(),
+            'end_date': self.end_date.isoformat(),
+            'total_signals': self.total_signals,
+            'winners': self.winners,
+            'win_rate': self.win_rate,
+            'avg_return_3m': self.avg_return_3m,
+            'avg_return_6m': self.avg_return_6m,
+            'avg_return_12m': self.avg_return_12m,
+            'avg_max_drawdown': self.avg_max_drawdown,
+            'avg_days_to_target': self.avg_days_to_target,
+            'outcomes': [o.to_dict() for o in self.outcomes],
+        }
+
+
+class DeepBottomBacktester:
+    """
+    Backtest Deep Bottom detection strategy.
+
+    Key metrics:
+    - Win rate (% achieving 50%+ in 12 months)
+    - Average return at 3/6/12 month marks
+    - Maximum drawdown after signal
+    - Time to recovery
+    """
+
+    # Known historical crash periods for specialized testing
+    CRASH_PERIODS = {
+        'btc_2018': {
+            'symbol': 'BTC',
+            'name': 'BTC Dec 2018 Bottom',
+            'start': '2018-11-01',
+            'end': '2019-02-28',
+            'expected_bottom': '2018-12-15'
+        },
+        'covid_2020': {
+            'symbol': 'SPY',
+            'name': 'COVID Crash Mar 2020',
+            'start': '2020-02-15',
+            'end': '2020-04-30',
+            'expected_bottom': '2020-03-23'
+        },
+        'crypto_2022': {
+            'symbol': 'BTC',
+            'name': 'Crypto Winter Nov 2022',
+            'start': '2022-10-01',
+            'end': '2023-01-31',
+            'expected_bottom': '2022-11-21'
+        },
+        'tech_crash_2022': {
+            'symbol': 'QQQ',
+            'name': 'Tech Selloff 2022',
+            'start': '2022-09-01',
+            'end': '2023-01-31',
+            'expected_bottom': '2022-10-13'
+        }
+    }
+
+    def __init__(self):
+        self.yahoo_fetcher = YahooFetcher()
+        self.coingecko_fetcher = CoinGeckoFetcher()
+        self.config = DEEP_BOTTOM_BACKTEST_CONFIG
+
+    def backtest_symbol(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        detection_mode: str = 'both'
+    ) -> Optional[BacktestResult]:
+        """
+        Backtest a single symbol over a date range.
+
+        Args:
+            symbol: Stock or crypto symbol
+            start_date: Start of backtest period
+            end_date: End of backtest period
+            detection_mode: 'basic', 'advanced', or 'both'
+
+        Returns:
+            BacktestResult with all signals and outcomes
+        """
+        logger.info(f"Backtesting {symbol} from {start_date} to {end_date}")
+
+        # Get extended historical data
+        prices = self._get_extended_prices(symbol, start_date, end_date)
+        if not prices or len(prices) < 365:
+            logger.warning(f"Insufficient data for {symbol}")
+            return None
+
+        # Detect signals
+        signals = self._detect_signals_in_range(
+            symbol, prices, start_date, end_date, detection_mode
+        )
+
+        if not signals:
+            logger.info(f"No signals detected for {symbol}")
+            return BacktestResult(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                total_signals=0,
+                winners=0,
+                win_rate=0.0,
+                avg_return_3m=0.0,
+                avg_return_6m=0.0,
+                avg_return_12m=0.0,
+                avg_max_drawdown=0.0,
+                avg_days_to_target=None,
+                best_signal=None,
+                worst_signal=None,
+                outcomes=[]
+            )
+
+        # Calculate outcomes for each signal
+        outcomes = self._calculate_outcomes(signals, prices)
+
+        # Aggregate metrics
+        return self._aggregate_results(symbol, start_date, end_date, outcomes)
+
+    def _get_extended_prices(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> Optional[List[Tuple[datetime, float]]]:
+        """Get extended historical prices for backtesting"""
+        # Need extra data before start_date for lookback window
+        lookback_start = start_date - timedelta(days=400)
+        # Need extra data after end_date for outcome measurement
+        forward_end = end_date + timedelta(days=400)
+
+        if is_crypto_symbol(symbol):
+            return self.coingecko_fetcher.get_historical_prices_extended(
+                symbol, lookback_start, forward_end
+            )
+        else:
+            return self.yahoo_fetcher.get_historical_prices_extended(
+                symbol, lookback_start, forward_end
+            )
+
+    def _detect_signals_in_range(
+        self,
+        symbol: str,
+        prices: List[Tuple[datetime, float]],
+        start_date: datetime,
+        end_date: datetime,
+        detection_mode: str
+    ) -> List[DeepBottomSignal]:
+        """
+        Detect all Deep Bottom signals within the date range.
+
+        Uses rolling window analysis to simulate real-time detection.
+        """
+        signals = []
+        last_signal_date = None
+
+        # Convert prices to dict for easier lookup
+        price_dict = {p[0].date(): p[1] for p in prices}
+        price_dates = sorted(price_dict.keys())
+
+        for i, current_date in enumerate(price_dates):
+            dt = datetime.combine(current_date, datetime.min.time())
+
+            # Only check within backtest range
+            if dt < start_date or dt > end_date:
+                continue
+
+            # Minimum days between signals
+            if last_signal_date:
+                days_since = (dt - last_signal_date).days
+                if days_since < self.config.MIN_DAYS_BETWEEN_SIGNALS:
+                    continue
+
+            # Build lookback window (365 days)
+            lookback_prices = []
+            for j in range(max(0, i - 365), i + 1):
+                date = price_dates[j]
+                lookback_prices.append((
+                    datetime.combine(date, datetime.min.time()),
+                    price_dict[date]
+                ))
+
+            if len(lookback_prices) < 100:
+                continue
+
+            # Run detection
+            signal = self._check_signal(symbol, lookback_prices, detection_mode)
+
+            if signal:
+                signal.signal_date = dt
+                signals.append(signal)
+                last_signal_date = dt
+                logger.debug(f"Signal detected for {symbol} on {dt.date()}")
+
+        return signals
+
+    def _check_signal(
+        self,
+        symbol: str,
+        prices: List[Tuple[datetime, float]],
+        detection_mode: str
+    ) -> Optional[DeepBottomSignal]:
+        """Check if current point triggers a Deep Bottom signal"""
+        current_price = prices[-1][1]
+
+        # Calculate indicators
+        drawdown = FeatureCalculator.calculate_drawdown_from_ath(prices)
+        week52_proximity = FeatureCalculator.calculate_52week_low_proximity(prices)
+        rsi = FeatureCalculator.calculate_rsi(prices, 14)
+        ma_200 = FeatureCalculator.calculate_moving_average(prices, 200)
+        return_7d = FeatureCalculator.calculate_return(prices, 7)
+
+        if None in [drawdown, week52_proximity, rsi, return_7d]:
+            return None
+
+        # Basic conditions
+        basic_conditions = {
+            'ath_drawdown': drawdown >= DEEP_BOTTOM_THRESHOLDS.ATH_DRAWDOWN_MIN,
+            'near_52week_low': week52_proximity <= DEEP_BOTTOM_THRESHOLDS.WEEK52_LOW_PROXIMITY_MAX,
+            'rsi_oversold': rsi <= DEEP_BOTTOM_THRESHOLDS.RSI_OVERSOLD,
+            'below_ma200': ma_200 is not None and current_price < ma_200,
+            'not_crashing': return_7d > DEEP_BOTTOM_THRESHOLDS.MIN_7D_RETURN
+        }
+
+        basic_met = sum(1 for v in basic_conditions.values() if v)
+
+        # Check based on mode
+        signal_type = None
+        score = None
+
+        if detection_mode in ['basic', 'both']:
+            if all(basic_conditions.values()):
+                signal_type = SignalType.BASIC
+
+        if detection_mode in ['advanced', 'both']:
+            # Advanced scoring
+            deep_score = FeatureCalculator.calculate_deep_bottom_score(prices)
+
+            if deep_score:
+                score = deep_score.get('total_score', 0)
+
+                # Advanced conditions
+                if score >= 70:
+                    signal_type = SignalType.STRONG
+                elif score >= 50 and basic_met >= 4:
+                    signal_type = SignalType.MODERATE
+                elif basic_met >= 4:
+                    signal_type = SignalType.WEAK
+
+        if signal_type:
+            return DeepBottomSignal(
+                symbol=symbol,
+                signal_date=prices[-1][0],
+                signal_type=signal_type,
+                entry_price=current_price,
+                drawdown_pct=drawdown,
+                rsi=rsi,
+                score=score,
+                metrics_snapshot={
+                    'basic_conditions': basic_conditions,
+                    'week52_proximity': week52_proximity,
+                    'ma_200': ma_200,
+                    'return_7d': return_7d
+                }
+            )
+
+        return None
+
+    def _calculate_outcomes(
+        self,
+        signals: List[DeepBottomSignal],
+        prices: List[Tuple[datetime, float]]
+    ) -> List[SignalOutcome]:
+        """Calculate outcomes for each signal"""
+        outcomes = []
+        price_dict = {p[0].date(): p[1] for p in prices}
+
+        for signal in signals:
+            outcome = self._calculate_single_outcome(signal, price_dict)
+            outcomes.append(outcome)
+
+        return outcomes
+
+    def _calculate_single_outcome(
+        self,
+        signal: DeepBottomSignal,
+        price_dict: Dict
+    ) -> SignalOutcome:
+        """Calculate outcome for a single signal"""
+        entry_date = signal.signal_date.date()
+        entry_price = signal.entry_price
+
+        # Calculate returns at intervals
+        return_3m = self._get_return_at_days(price_dict, entry_date, entry_price, 90)
+        return_6m = self._get_return_at_days(price_dict, entry_date, entry_price, 180)
+        return_12m = self._get_return_at_days(price_dict, entry_date, entry_price, 365)
+
+        # Calculate max drawdown and peak return after signal
+        max_dd = 0.0
+        peak_return = 0.0
+        days_to_50pct = None
+
+        sorted_dates = sorted(price_dict.keys())
+        entry_idx = None
+        for i, d in enumerate(sorted_dates):
+            if d >= entry_date:
+                entry_idx = i
+                break
+
+        if entry_idx is not None:
+            peak_price = entry_price
+            for i in range(entry_idx, min(entry_idx + 365, len(sorted_dates))):
+                date = sorted_dates[i]
+                price = price_dict[date]
+
+                current_return = (price - entry_price) / entry_price * 100
+                peak_return = max(peak_return, current_return)
+
+                # Check for 50% target
+                if days_to_50pct is None and current_return >= 50:
+                    days_to_50pct = (date - entry_date).days
+
+                # Track drawdown from peak
+                if price > peak_price:
+                    peak_price = price
+                dd = (peak_price - price) / peak_price * 100
+                max_dd = max(max_dd, dd)
+
+        is_winner = return_12m is not None and return_12m >= self.config.TARGET_RETURN_PCT
+
+        return SignalOutcome(
+            signal=signal,
+            return_3m=return_3m,
+            return_6m=return_6m,
+            return_12m=return_12m,
+            max_drawdown_after=max_dd,
+            days_to_50pct=days_to_50pct,
+            peak_return=peak_return,
+            is_winner=is_winner
+        )
+
+    def _get_return_at_days(
+        self,
+        price_dict: Dict,
+        entry_date,
+        entry_price: float,
+        days: int
+    ) -> Optional[float]:
+        """Get return at specific number of days after entry"""
+        target_date = entry_date + timedelta(days=days)
+
+        # Find closest available date
+        for offset in range(0, 7):
+            check_date = target_date + timedelta(days=offset)
+            if check_date in price_dict:
+                return (price_dict[check_date] - entry_price) / entry_price * 100
+
+            check_date = target_date - timedelta(days=offset)
+            if check_date in price_dict:
+                return (price_dict[check_date] - entry_price) / entry_price * 100
+
+        return None
+
+    def _aggregate_results(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        outcomes: List[SignalOutcome]
+    ) -> BacktestResult:
+        """Aggregate individual outcomes into summary statistics"""
+        if not outcomes:
+            return BacktestResult(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                total_signals=0,
+                winners=0,
+                win_rate=0.0,
+                avg_return_3m=0.0,
+                avg_return_6m=0.0,
+                avg_return_12m=0.0,
+                avg_max_drawdown=0.0,
+                avg_days_to_target=None,
+                best_signal=None,
+                worst_signal=None,
+                outcomes=[]
+            )
+
+        total = len(outcomes)
+        winners = sum(1 for o in outcomes if o.is_winner)
+
+        # Calculate averages (excluding None values)
+        returns_3m = [o.return_3m for o in outcomes if o.return_3m is not None]
+        returns_6m = [o.return_6m for o in outcomes if o.return_6m is not None]
+        returns_12m = [o.return_12m for o in outcomes if o.return_12m is not None]
+        drawdowns = [o.max_drawdown_after for o in outcomes]
+        days_to_target = [o.days_to_50pct for o in outcomes if o.days_to_50pct is not None]
+
+        avg_return_3m = sum(returns_3m) / len(returns_3m) if returns_3m else 0.0
+        avg_return_6m = sum(returns_6m) / len(returns_6m) if returns_6m else 0.0
+        avg_return_12m = sum(returns_12m) / len(returns_12m) if returns_12m else 0.0
+        avg_max_dd = sum(drawdowns) / len(drawdowns) if drawdowns else 0.0
+        avg_days = sum(days_to_target) / len(days_to_target) if days_to_target else None
+
+        # Best and worst signals
+        best_signal = max(outcomes, key=lambda o: o.return_12m or -999) if returns_12m else None
+        worst_signal = min(outcomes, key=lambda o: o.return_12m or 999) if returns_12m else None
+
+        return BacktestResult(
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            total_signals=total,
+            winners=winners,
+            win_rate=(winners / total * 100) if total > 0 else 0.0,
+            avg_return_3m=avg_return_3m,
+            avg_return_6m=avg_return_6m,
+            avg_return_12m=avg_return_12m,
+            avg_max_drawdown=avg_max_dd,
+            avg_days_to_target=avg_days,
+            best_signal=best_signal,
+            worst_signal=worst_signal,
+            outcomes=outcomes
+        )
+
+    def backtest_crash_period(self, period_name: str) -> Optional[BacktestResult]:
+        """
+        Specialized backtest for known crash periods.
+
+        Args:
+            period_name: Key from CRASH_PERIODS dict
+
+        Returns:
+            BacktestResult for that crash period
+        """
+        if period_name not in self.CRASH_PERIODS:
+            logger.error(f"Unknown crash period: {period_name}")
+            return None
+
+        period = self.CRASH_PERIODS[period_name]
+        start_date = datetime.strptime(period['start'], '%Y-%m-%d')
+        end_date = datetime.strptime(period['end'], '%Y-%m-%d')
+
+        result = self.backtest_symbol(
+            period['symbol'],
+            start_date,
+            end_date,
+            detection_mode='both'
+        )
+
+        if result:
+            logger.info(
+                f"Crash period {period_name}: "
+                f"{result.total_signals} signals, "
+                f"{result.win_rate:.1f}% win rate, "
+                f"avg 12m return: {result.avg_return_12m:.1f}%"
+            )
+
+        return result
+
+    def compare_basic_vs_advanced(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> Dict:
+        """
+        Compare performance of basic vs advanced detection methods.
+
+        Returns:
+            Dict with 'basic' and 'advanced' BacktestResults
+        """
+        basic_result = self.backtest_symbol(symbol, start_date, end_date, 'basic')
+        advanced_result = self.backtest_symbol(symbol, start_date, end_date, 'advanced')
+
+        comparison = {
+            'symbol': symbol,
+            'period': f"{start_date.date()} to {end_date.date()}",
+            'basic': basic_result.to_dict() if basic_result else None,
+            'advanced': advanced_result.to_dict() if advanced_result else None,
+        }
+
+        # Add comparison summary
+        if basic_result and advanced_result:
+            comparison['summary'] = {
+                'signals': {
+                    'basic': basic_result.total_signals,
+                    'advanced': advanced_result.total_signals,
+                },
+                'win_rate': {
+                    'basic': basic_result.win_rate,
+                    'advanced': advanced_result.win_rate,
+                },
+                'avg_return_12m': {
+                    'basic': basic_result.avg_return_12m,
+                    'advanced': advanced_result.avg_return_12m,
+                },
+                'winner': 'advanced' if advanced_result.win_rate > basic_result.win_rate else 'basic'
+            }
+
+        return comparison
+
+
+def backtest_all_crash_periods() -> Dict[str, BacktestResult]:
+    """Run backtests on all known crash periods"""
+    backtester = DeepBottomBacktester()
+    results = {}
+
+    for period_name in backtester.CRASH_PERIODS:
+        result = backtester.backtest_crash_period(period_name)
+        if result:
+            results[period_name] = result
+
+    return results

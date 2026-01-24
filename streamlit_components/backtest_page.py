@@ -1,6 +1,7 @@
 """
 バックテストページコンポーネント
 バックテスト実行UI、結果可視化、実績データ保存
+Deep Bottom バックテスト機能を含む
 """
 import streamlit as st
 import plotly.graph_objects as go
@@ -13,6 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backtesting.backtester import Backtester
+from backtesting.deep_bottom_backtester import DeepBottomBacktester
 from services.config_service import load_config
 
 
@@ -244,14 +246,467 @@ def create_trades_chart(result: Dict) -> go.Figure:
     return fig
 
 
+def create_deep_bottom_signal_chart(result: Dict) -> go.Figure:
+    """
+    Deep Bottom シグナルタイムラインチャートを作成
+
+    Args:
+        result: バックテスト結果
+
+    Returns:
+        Plotly Figure
+    """
+    outcomes = result.get('outcomes', [])
+    if not outcomes:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="シグナルデータがありません",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False
+        )
+        return fig
+
+    # シグナルを勝ち/負けで分類
+    winning_dates = []
+    winning_returns = []
+    losing_dates = []
+    losing_returns = []
+
+    for outcome in outcomes:
+        signal = outcome.get('signal', {})
+        signal_date = signal.get('date')
+        is_winner = outcome.get('is_winner', False)
+        return_12m = outcome.get('return_12m', 0) or 0
+
+        if signal_date:
+            if isinstance(signal_date, str):
+                signal_date = datetime.fromisoformat(signal_date)
+
+            if is_winner:
+                winning_dates.append(signal_date)
+                winning_returns.append(return_12m * 100)
+            else:
+                losing_dates.append(signal_date)
+                losing_returns.append(return_12m * 100)
+
+    fig = go.Figure()
+
+    # 勝ちシグナル
+    if winning_dates:
+        fig.add_trace(go.Scatter(
+            x=winning_dates,
+            y=winning_returns,
+            mode='markers',
+            name='勝ちシグナル (50%+)',
+            marker=dict(
+                size=15,
+                color='green',
+                symbol='triangle-up'
+            ),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>12ヶ月リターン: %{y:.1f}%<extra>勝ち</extra>'
+        ))
+
+    # 負けシグナル
+    if losing_dates:
+        fig.add_trace(go.Scatter(
+            x=losing_dates,
+            y=losing_returns,
+            mode='markers',
+            name='負けシグナル (<50%)',
+            marker=dict(
+                size=12,
+                color='red',
+                symbol='triangle-down'
+            ),
+            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>12ヶ月リターン: %{y:.1f}%<extra>負け</extra>'
+        ))
+
+    # 50%ライン
+    fig.add_hline(
+        y=50,
+        line_dash="dash",
+        line_color="blue",
+        annotation_text="目標: +50%",
+        annotation_position="right"
+    )
+
+    # 0%ライン
+    fig.add_hline(
+        y=0,
+        line_dash="solid",
+        line_color="gray"
+    )
+
+    fig.update_layout(
+        title="Deep Bottom シグナルと12ヶ月リターン",
+        xaxis=dict(title="シグナル日"),
+        yaxis=dict(title="12ヶ月リターン (%)"),
+        height=400,
+        template='plotly_white',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+
+    return fig
+
+
+def create_return_distribution_chart(result: Dict) -> go.Figure:
+    """
+    リターン分布チャートを作成
+
+    Args:
+        result: バックテスト結果
+
+    Returns:
+        Plotly Figure
+    """
+    outcomes = result.get('outcomes', [])
+    if not outcomes:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="データがありません",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False
+        )
+        return fig
+
+    returns_3m = [o.get('return_3m', 0) * 100 for o in outcomes if o.get('return_3m') is not None]
+    returns_6m = [o.get('return_6m', 0) * 100 for o in outcomes if o.get('return_6m') is not None]
+    returns_12m = [o.get('return_12m', 0) * 100 for o in outcomes if o.get('return_12m') is not None]
+
+    fig = go.Figure()
+
+    if returns_3m:
+        fig.add_trace(go.Box(
+            y=returns_3m,
+            name='3ヶ月',
+            boxpoints='all',
+            jitter=0.3,
+            marker_color='#3366cc'
+        ))
+
+    if returns_6m:
+        fig.add_trace(go.Box(
+            y=returns_6m,
+            name='6ヶ月',
+            boxpoints='all',
+            jitter=0.3,
+            marker_color='#dc3912'
+        ))
+
+    if returns_12m:
+        fig.add_trace(go.Box(
+            y=returns_12m,
+            name='12ヶ月',
+            boxpoints='all',
+            jitter=0.3,
+            marker_color='#109618'
+        ))
+
+    # 目標ライン
+    fig.add_hline(
+        y=50,
+        line_dash="dash",
+        line_color="gold",
+        annotation_text="目標 +50%"
+    )
+
+    fig.update_layout(
+        title="期間別リターン分布",
+        yaxis=dict(title="リターン (%)"),
+        height=350,
+        template='plotly_white',
+        showlegend=False
+    )
+
+    return fig
+
+
+def render_deep_bottom_backtest_tab():
+    """
+    Deep Bottom バックテストタブをレンダリング
+    """
+    st.subheader("💎 Deep Bottom バックテスト")
+    st.caption("Deep Bottom シグナルが実際に50%以上の上昇につながったか検証します")
+
+    # 設定
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # クラッシュ期間選択
+        crash_periods = DeepBottomBacktester.CRASH_PERIODS
+        period_options = ["カスタム"] + list(crash_periods.keys())
+        period_labels = {
+            "カスタム": "カスタム期間",
+            "btc_2018": "BTC 2018年暴落",
+            "covid_2020": "COVID-19 暴落",
+            "crypto_2022": "仮想通貨冬 2022",
+            "tech_crash_2022": "テック暴落 2022"
+        }
+
+        selected_period = st.selectbox(
+            "検証期間",
+            period_options,
+            format_func=lambda x: period_labels.get(x, x)
+        )
+
+    with col2:
+        detection_mode = st.selectbox(
+            "検出モード",
+            ["both", "basic", "advanced"],
+            format_func=lambda x: {
+                "both": "両方 (Basic + Advanced)",
+                "basic": "Basic のみ (5条件)",
+                "advanced": "Advanced のみ (7指標)"
+            }.get(x, x)
+        )
+
+    # カスタム期間の場合
+    if selected_period == "カスタム":
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            symbol = st.text_input("シンボル", value="BTC").upper()
+
+        with col2:
+            start_date = st.date_input(
+                "開始日",
+                value=datetime.now() - timedelta(days=365*3),
+                max_value=datetime.now() - timedelta(days=365)  # 少なくとも1年前
+            )
+
+        with col3:
+            end_date = st.date_input(
+                "終了日",
+                value=datetime.now() - timedelta(days=365),
+                max_value=datetime.now() - timedelta(days=30)  # 少なくとも30日前
+            )
+    else:
+        period_info = crash_periods[selected_period]
+        symbol = period_info['symbol']
+        start_date = datetime.strptime(period_info['start'], '%Y-%m-%d').date()
+        end_date = datetime.strptime(period_info['end'], '%Y-%m-%d').date()
+
+        st.info(f"📅 {symbol}: {start_date} 〜 {end_date}")
+
+    # バックテスト実行
+    if st.button("🚀 Deep Bottom バックテストを実行", type="primary"):
+        with st.spinner("バックテストを実行中..."):
+            try:
+                backtester = DeepBottomBacktester()
+
+                result = backtester.backtest_symbol(
+                    symbol=symbol,
+                    start_date=datetime.combine(start_date, datetime.min.time()),
+                    end_date=datetime.combine(end_date, datetime.max.time()),
+                    detection_mode=detection_mode
+                )
+
+                # 結果をセッションに保存
+                st.session_state['deep_bottom_backtest_result'] = result
+                st.success("バックテストが完了しました！")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"バックテスト実行エラー: {e}")
+                import traceback
+                st.exception(e)
+
+    # 結果表示
+    if 'deep_bottom_backtest_result' in st.session_state:
+        result = st.session_state['deep_bottom_backtest_result']
+
+        st.markdown("---")
+        st.subheader("📊 バックテスト結果")
+
+        # メトリクス
+        metrics = result.get('metrics', {})
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        with col1:
+            signal_count = metrics.get('signal_count', 0)
+            st.metric("シグナル数", signal_count)
+
+        with col2:
+            win_rate = metrics.get('win_rate', 0) * 100
+            st.metric(
+                "勝率",
+                f"{win_rate:.1f}%",
+                help="12ヶ月以内に50%以上上昇した割合"
+            )
+
+        with col3:
+            avg_12m = metrics.get('avg_return_12m', 0) * 100
+            st.metric(
+                "平均12ヶ月リターン",
+                f"{avg_12m:.1f}%",
+                delta=f"{avg_12m - 50:.1f}%" if avg_12m else None
+            )
+
+        with col4:
+            max_dd = metrics.get('max_drawdown', 0) * 100
+            st.metric(
+                "最大ドローダウン",
+                f"{max_dd:.1f}%",
+                delta=None
+            )
+
+        with col5:
+            days_to_target = metrics.get('avg_days_to_target', None)
+            if days_to_target:
+                st.metric("平均達成日数", f"{days_to_target:.0f}日")
+            else:
+                st.metric("平均達成日数", "N/A")
+
+        # 追加メトリクス
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            avg_3m = metrics.get('avg_return_3m', 0) * 100
+            st.metric("平均3ヶ月リターン", f"{avg_3m:.1f}%")
+
+        with col2:
+            avg_6m = metrics.get('avg_return_6m', 0) * 100
+            st.metric("平均6ヶ月リターン", f"{avg_6m:.1f}%")
+
+        with col3:
+            win_count = metrics.get('winning_signals', 0)
+            st.metric("勝ちシグナル数", f"{win_count}/{signal_count}")
+
+        st.markdown("---")
+
+        # チャート
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.plotly_chart(
+                create_deep_bottom_signal_chart(result),
+                use_container_width=True
+            )
+
+        with col2:
+            st.plotly_chart(
+                create_return_distribution_chart(result),
+                use_container_width=True
+            )
+
+        # シグナル詳細
+        with st.expander("📋 シグナル詳細", expanded=False):
+            outcomes = result.get('outcomes', [])
+            if outcomes:
+                import pandas as pd
+
+                details = []
+                for outcome in outcomes:
+                    signal = outcome.get('signal', {})
+                    details.append({
+                        'シグナル日': signal.get('date', 'N/A'),
+                        'シグナル価格': f"${signal.get('price', 0):,.2f}",
+                        'スコア': f"{signal.get('score', 0):.0f}",
+                        'モード': signal.get('mode', 'N/A'),
+                        '3ヶ月': f"{(outcome.get('return_3m', 0) or 0) * 100:.1f}%",
+                        '6ヶ月': f"{(outcome.get('return_6m', 0) or 0) * 100:.1f}%",
+                        '12ヶ月': f"{(outcome.get('return_12m', 0) or 0) * 100:.1f}%",
+                        '50%達成': '✅' if outcome.get('is_winner') else '❌',
+                        '達成日数': outcome.get('days_to_target', 'N/A')
+                    })
+
+                df = pd.DataFrame(details)
+                st.dataframe(df, use_container_width=True)
+            else:
+                st.info("シグナルが検出されませんでした")
+
+    # Basic vs Advanced 比較
+    st.markdown("---")
+    st.subheader("🔍 Basic vs Advanced 比較")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        compare_symbol = st.text_input("比較シンボル", value="BTC", key="compare_symbol").upper()
+
+    with col2:
+        compare_start = st.date_input(
+            "比較開始日",
+            value=datetime.now() - timedelta(days=365*3),
+            key="compare_start"
+        )
+
+    with col3:
+        compare_end = st.date_input(
+            "比較終了日",
+            value=datetime.now() - timedelta(days=365),
+            key="compare_end"
+        )
+
+    if st.button("📊 Basic vs Advanced を比較", type="secondary"):
+        with st.spinner("比較分析中..."):
+            try:
+                backtester = DeepBottomBacktester()
+                comparison = backtester.compare_basic_vs_advanced(
+                    compare_symbol,
+                    datetime.combine(compare_start, datetime.min.time()),
+                    datetime.combine(compare_end, datetime.max.time())
+                )
+
+                st.session_state['deep_bottom_comparison'] = comparison
+                st.success("比較が完了しました！")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"比較エラー: {e}")
+
+    if 'deep_bottom_comparison' in st.session_state:
+        comparison = st.session_state['deep_bottom_comparison']
+
+        basic = comparison.get('basic', {}).get('metrics', {})
+        advanced = comparison.get('advanced', {}).get('metrics', {})
+
+        import pandas as pd
+
+        comparison_data = {
+            '指標': [
+                'シグナル数',
+                '勝率',
+                '平均3ヶ月リターン',
+                '平均6ヶ月リターン',
+                '平均12ヶ月リターン',
+                '最大ドローダウン'
+            ],
+            'Basic': [
+                basic.get('signal_count', 0),
+                f"{basic.get('win_rate', 0) * 100:.1f}%",
+                f"{basic.get('avg_return_3m', 0) * 100:.1f}%",
+                f"{basic.get('avg_return_6m', 0) * 100:.1f}%",
+                f"{basic.get('avg_return_12m', 0) * 100:.1f}%",
+                f"{basic.get('max_drawdown', 0) * 100:.1f}%"
+            ],
+            'Advanced': [
+                advanced.get('signal_count', 0),
+                f"{advanced.get('win_rate', 0) * 100:.1f}%",
+                f"{advanced.get('avg_return_3m', 0) * 100:.1f}%",
+                f"{advanced.get('avg_return_6m', 0) * 100:.1f}%",
+                f"{advanced.get('avg_return_12m', 0) * 100:.1f}%",
+                f"{advanced.get('max_drawdown', 0) * 100:.1f}%"
+            ]
+        }
+
+        st.dataframe(pd.DataFrame(comparison_data), use_container_width=True)
+
+
 def render_backtest_page():
     """
     バックテストページをレンダリング
     """
     st.markdown('<div class="main-header">🔬 バックテスト</div>', unsafe_allow_html=True)
-    
+
     # タブで分ける
-    tab1, tab2, tab3 = st.tabs(["📊 バックテスト実行", "📈 結果表示", "📁 保存済み結果"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 バックテスト実行", "📈 結果表示", "📁 保存済み結果", "💎 Deep Bottom"])
     
     with tab1:
         st.subheader("バックテスト設定")
@@ -504,3 +959,6 @@ def render_backtest_page():
                         st.rerun()
                     except Exception as e:
                         st.error(f"削除エラー: {e}")
+
+    with tab4:
+        render_deep_bottom_backtest_tab()

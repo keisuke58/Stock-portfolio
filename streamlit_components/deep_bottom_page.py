@@ -1711,6 +1711,58 @@ def display_deep_bottom_results(results: List[Dict]):
                                 if cons.get('range_pct'):
                                     st.write(f"レンジ幅: {cons['range_pct']:.1f}%")
 
+                # ファンダメンタル分析（株式のみ）
+                if item.get('fundamental_score') is not None:
+                    with st.expander("💰 ファンダメンタル分析"):
+                        fund_col1, fund_col2 = st.columns(2)
+
+                        with fund_col1:
+                            fund_score = item.get('fundamental_score', 0)
+                            fund_health = item.get('fundamental_health', 'unknown')
+
+                            # 健全性に応じた色
+                            health_colors = {
+                                'healthy': '🟢',
+                                'moderate': '🟡',
+                                'weak': '🟠',
+                                'value_trap': '🔴'
+                            }
+                            health_emoji = health_colors.get(fund_health, '⚪')
+
+                            st.metric(
+                                "ファンダメンタルスコア",
+                                f"{fund_score:.0f}/25",
+                                f"{health_emoji} {fund_health.upper()}"
+                            )
+
+                            # 調整後総合スコア
+                            if item.get('adjusted_total_score') is not None:
+                                adj_score = item['adjusted_total_score']
+                                st.metric(
+                                    "調整後総合スコア",
+                                    f"{adj_score:.0f}/100",
+                                    "テクニカル(75) + ファンダメンタル(25)"
+                                )
+
+                        with fund_col2:
+                            details = item.get('fundamental_details', {})
+                            if details:
+                                st.markdown("**内訳:**")
+                                st.write(f"• P/E: {details.get('pe_score', 0):.0f}/6")
+                                st.write(f"• P/B: {details.get('pb_score', 0):.0f}/5")
+                                st.write(f"• FCF: {details.get('fcf_score', 0):.0f}/5")
+                                st.write(f"• 負債: {details.get('debt_score', 0):.0f}/5")
+                                st.write(f"• 成長: {details.get('growth_score', 0):.0f}/4")
+
+                        # 警告表示
+                        warnings = item.get('fundamental_warnings', [])
+                        if warnings:
+                            st.warning("⚠️ " + " | ".join(warnings))
+
+                        # ファンダメンタル調整の説明
+                        if item.get('fundamental_adjustment'):
+                            st.info(f"📉 {item['fundamental_adjustment']}")
+
                 st.markdown("---")
     else:
         st.info("現在、Deep Bottomシグナルを満たす銘柄はありません。")

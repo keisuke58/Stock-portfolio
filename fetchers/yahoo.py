@@ -139,6 +139,101 @@ class YahooFetcher:
             'enterprise_value': None,
         }
 
+    def get_historical_prices_extended(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> Optional[List[Tuple[datetime, float]]]:
+        """
+        指定期間の履歴価格を取得（バックテスト用、最大5年）
+
+        Args:
+            symbol: 銘柄シンボル
+            start_date: 開始日
+            end_date: 終了日
+
+        Returns:
+            [(datetime, price), ...] or None
+        """
+        try:
+            ticker = yf.Ticker(symbol.upper())
+            hist = ticker.history(start=start_date, end=end_date, interval="1d")
+
+            if hist.empty:
+                return None
+
+            result = []
+            for date, row in hist.iterrows():
+                dt = date.to_pydatetime() if hasattr(date, 'to_pydatetime') else datetime.fromtimestamp(date.timestamp())
+                # Make datetime timezone-naive for consistency
+                if dt.tzinfo is not None:
+                    dt = dt.replace(tzinfo=None)
+                price = float(row['Close'])
+                result.append((dt, price))
+
+            return sorted(result, key=lambda x: x[0])
+
+        except Exception as e:
+            logger.warning(f"Error fetching extended historical prices for {symbol}: {e}")
+            return None
+
+    def get_fundamental_data(self, symbol: str) -> Optional[dict]:
+        """
+        ファンダメンタルデータを取得（Deep Bottom分析用）
+
+        Returns:
+            dict with: pe_ratio, pb_ratio, free_cash_flow, debt_to_equity,
+                       revenue_growth, market_cap, profit_margin, etc.
+        """
+        try:
+            ticker = yf.Ticker(symbol.upper())
+            info = ticker.info
+
+            return {
+                # Valuation
+                'pe_ratio': info.get('trailingPE'),
+                'forward_pe': info.get('forwardPE'),
+                'pb_ratio': info.get('priceToBook'),
+                'ps_ratio': info.get('priceToSalesTrailing12Months'),
+
+                # Profitability
+                'profit_margin': info.get('profitMargins'),
+                'operating_margin': info.get('operatingMargins'),
+                'roe': info.get('returnOnEquity'),
+                'roa': info.get('returnOnAssets'),
+
+                # Financial Health
+                'free_cash_flow': info.get('freeCashflow'),
+                'operating_cash_flow': info.get('operatingCashflow'),
+                'total_debt': info.get('totalDebt'),
+                'total_cash': info.get('totalCash'),
+                'debt_to_equity': info.get('debtToEquity'),
+                'current_ratio': info.get('currentRatio'),
+                'quick_ratio': info.get('quickRatio'),
+
+                # Growth
+                'revenue_growth': info.get('revenueGrowth'),
+                'earnings_growth': info.get('earningsGrowth'),
+                'earnings_quarterly_growth': info.get('earningsQuarterlyGrowth'),
+
+                # Size
+                'market_cap': info.get('marketCap'),
+                'enterprise_value': info.get('enterpriseValue'),
+
+                # Dividend
+                'dividend_yield': info.get('dividendYield'),
+                'payout_ratio': info.get('payoutRatio'),
+
+                # Other
+                'beta': info.get('beta'),
+                'sector': info.get('sector'),
+                'industry': info.get('industry'),
+            }
+        except Exception as e:
+            logger.warning(f"Error fetching fundamental data for {symbol}: {e}")
+            return None
+
     def _get_coingecko_id(self, symbol: str) -> str:
         """Compatibility method for BaseFetcher interface."""
         return symbol.lower()
