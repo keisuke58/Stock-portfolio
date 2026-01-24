@@ -526,7 +526,7 @@ class DiscordNotifier:
     ) -> bool:
         """
         レジーム変化通知
-        
+
         Args:
             old_regime: 以前のレジーム
             new_regime: 新しいレジーム
@@ -535,3 +535,72 @@ class DiscordNotifier:
         # レジーム変化は抑制なし（市場全体の変化なので）
         message = self.format_regime_change_message(old_regime, new_regime, affected_symbols)
         return self.send(message)
+
+    def format_deep_bottom_message(
+        self,
+        symbol: str,
+        metrics: Dict
+    ) -> str:
+        """
+        DEEP_BOTTOM（長期投資機会）通知メッセージを生成
+
+        Args:
+            symbol: シンボル名
+            metrics: 検出メトリクス辞書
+        """
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+        current_price = metrics.get('current_price', 0)
+        ath_price = metrics.get('ath_price', 0)
+        drawdown_pct = metrics.get('drawdown_pct', 0)
+        week52_proximity = metrics.get('week52_low_proximity', 0)
+        rsi = metrics.get('rsi_14', 0)
+        ma_200 = metrics.get('ma_200', 0)
+
+        msg = f"💎 **DEEP_BOTTOM: {symbol} (長期投資機会)**\n\n"
+        msg += f"⚠️ **長期投資向けシグナル（短期予測ではありません）**\n\n"
+
+        msg += f"📊 **シグナル条件達成**\n"
+        msg += f"  • ATH下落率: **{drawdown_pct:.1f}%** (ATH: ${ath_price:,.2f} → 現在: ${current_price:,.2f})\n"
+        msg += f"  • 52週安値からの距離: **{week52_proximity * 100:.1f}%**\n"
+        msg += f"  • RSI(14): **{rsi:.1f}** (売られすぎ)\n"
+
+        if ma_200:
+            ma_distance = ((ma_200 - current_price) / current_price) * 100
+            msg += f"  • 200日移動平均: ${ma_200:,.2f} (現在価格より{ma_distance:.1f}%上)\n"
+
+        msg += f"\n💡 **歴史的に極めて割安な水準です**\n"
+        msg += f"📅 時刻: {timestamp}\n"
+
+        # URL
+        from ..signals import is_crypto_symbol
+        if is_crypto_symbol(symbol):
+            msg += f"`https://www.coingecko.com/en/coins/{symbol.lower()}`"
+        else:
+            msg += f"`https://finance.yahoo.com/quote/{symbol.upper()}`"
+
+        return msg
+
+    def notify_deep_bottom(
+        self,
+        symbol: str,
+        metrics: Dict
+    ) -> bool:
+        """
+        DEEP_BOTTOM通知
+
+        Args:
+            symbol: シンボル名
+            metrics: 検出メトリクス辞書
+        """
+        # 抑制ロジックチェック（24時間クールダウン）
+        if not self.throttler.should_notify(symbol, 'deep_bottom'):
+            return False
+
+        message = self.format_deep_bottom_message(symbol, metrics)
+        success = self.send(message)
+
+        if success:
+            self.throttler.mark_notified(symbol, 'deep_bottom')
+
+        return success

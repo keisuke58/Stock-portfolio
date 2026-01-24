@@ -162,6 +162,31 @@ class NotificationConfig:
 
 
 @dataclass(frozen=True)
+class DeepBottomThresholds:
+    """
+    Thresholds for deep bottom detection (long-term investing).
+    Designed to trigger only at historically extreme lows with upside potential.
+    """
+    # ATH drawdown: minimum percentage below all-time high
+    ATH_DRAWDOWN_MIN: float = 70.0  # At least 70% below ATH
+
+    # 52-week low proximity: how close to yearly low (0 = at low, 1 = at high)
+    WEEK52_LOW_PROXIMITY_MAX: float = 0.10  # Within 10% of 52-week low
+
+    # RSI threshold for oversold
+    RSI_OVERSOLD: float = 30.0  # RSI below 30
+
+    # Moving average period for mean reversion
+    MA_PERIOD: int = 200  # 200-day moving average
+
+    # Minimum days of historical data required
+    DETECTION_DAYS: int = 365  # 1 year of data needed
+
+    # Not in active crash: 7-day return must be above this
+    MIN_7D_RETURN: float = -20.0  # Avoid catching falling knives
+
+
+@dataclass(frozen=True)
 class SelectionConfig:
     """
     Configuration for daily selection logic.
@@ -219,3 +244,4 @@ SCORING_THRESHOLDS = ScoringThresholds()
 RATE_LIMITING = RateLimiting()
 NOTIFICATION_CONFIG = NotificationConfig()
 SELECTION_CONFIG = SelectionConfig()
+DEEP_BOTTOM_THRESHOLDS = DeepBottomThresholds()

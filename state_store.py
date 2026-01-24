@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class StateStore:
     """資産の状態（WATCH/BASE/BUY）をSQLiteで管理（スレッドセーフ）"""
 
-    STATES = ['NORMAL', 'WATCH', 'BASE', 'BUY']
+    STATES = ['NORMAL', 'WATCH', 'BASE', 'BUY', 'DEEP_BOTTOM']
 
     def __init__(self, db_path: str = 'asset_state.db'):
         self.db_path = db_path

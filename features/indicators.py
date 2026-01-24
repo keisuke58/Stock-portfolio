@@ -94,6 +94,97 @@ class FeatureCalculator:
         return (min_price, max_price, range_pct)
     
     @staticmethod
+    def calculate_rsi(prices: List[Tuple[datetime, float]], period: int = 14) -> Optional[float]:
+        """
+        RSI（相対力指数）を計算
+        戻り値: 0-100の値（30以下が売られすぎ、70以上が買われすぎ）
+        """
+        if len(prices) < period + 1:
+            return None
+
+        # 日次価格変動を計算
+        changes = []
+        for i in range(1, len(prices)):
+            change = prices[i][1] - prices[i-1][1]
+            changes.append(change)
+
+        if len(changes) < period:
+            return None
+
+        # 直近period日分の変動を使用
+        recent_changes = changes[-period:]
+
+        # 上昇・下落を分離
+        gains = [c if c > 0 else 0 for c in recent_changes]
+        losses = [-c if c < 0 else 0 for c in recent_changes]
+
+        avg_gain = sum(gains) / period
+        avg_loss = sum(losses) / period
+
+        if avg_loss == 0:
+            return 100.0  # 全て上昇
+
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+
+        return rsi
+
+    @staticmethod
+    def calculate_52week_low_proximity(prices: List[Tuple[datetime, float]]) -> Optional[float]:
+        """
+        52週（約252営業日）安値からの距離を計算
+        戻り値: 0.0（安値）〜 1.0（高値）の間の値
+        安値に近いほど0に近い
+        """
+        if len(prices) < 20:  # 最低20日分は必要
+            return None
+
+        # 直近252日分（または全データ）を使用
+        lookback = min(len(prices), 252)
+        recent_prices = [p[1] for p in prices[-lookback:]]
+
+        current_price = recent_prices[-1]
+        low_52week = min(recent_prices)
+        high_52week = max(recent_prices)
+
+        if high_52week == low_52week:
+            return 0.5  # 変動なし
+
+        # 0 = 安値、1 = 高値
+        proximity = (current_price - low_52week) / (high_52week - low_52week)
+        return proximity
+
+    @staticmethod
+    def calculate_moving_average(prices: List[Tuple[datetime, float]], period: int) -> Optional[float]:
+        """
+        単純移動平均を計算
+        戻り値: 移動平均価格
+        """
+        if len(prices) < period:
+            return None
+
+        recent_prices = [p[1] for p in prices[-period:]]
+        return sum(recent_prices) / period
+
+    @staticmethod
+    def calculate_drawdown_from_ath(prices: List[Tuple[datetime, float]]) -> Optional[float]:
+        """
+        ATH（史上最高値）からの下落率を計算
+        戻り値: 下落率（パーセンテージ、例: 70.5 = ATHから70.5%下落）
+        """
+        if not prices or len(prices) < 2:
+            return None
+
+        current_price = prices[-1][1]
+        ath_price = max([p[1] for p in prices])
+
+        if ath_price == 0:
+            return None
+
+        drawdown = ((ath_price - current_price) / ath_price) * 100
+        return drawdown
+
+    @staticmethod
     def calculate_high_breakout(prices: List[Tuple[datetime, float]], days: int) -> bool:
         """
         直近days日間の高値を上抜けしたかどうか
@@ -151,5 +242,11 @@ class FeatureCalculator:
         # 高値ブレイク（5日、10日）
         features['breakout_5d'] = FeatureCalculator.calculate_high_breakout(prices, 5)
         features['breakout_10d'] = FeatureCalculator.calculate_high_breakout(prices, 10)
-        
+
+        # Deep Bottom用指標
+        features['rsi_14'] = FeatureCalculator.calculate_rsi(prices, 14)
+        features['week52_low_proximity'] = FeatureCalculator.calculate_52week_low_proximity(prices)
+        features['ma_200'] = FeatureCalculator.calculate_moving_average(prices, 200)
+        features['drawdown_from_ath'] = FeatureCalculator.calculate_drawdown_from_ath(prices)
+
         return features

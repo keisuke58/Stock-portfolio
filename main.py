@@ -1,6 +1,7 @@
 """
 急落→低迷→反転検知Bot（メインロジック）
 状態遷移時のみDiscord/Lineに通知
+長期投資向けDEEP_BOTTOM検出も対応
 """
 import json
 import logging
@@ -12,6 +13,7 @@ from config.config_loader import load_all_config
 from core.logging_config import setup_logging, get_logger
 from state_store import StateStore
 from signals import determine_state, is_crypto_symbol
+from signals.state_machine import StateMachine
 from fetchers import YahooFetcher, CoinGeckoFetcher
 from notifiers import DiscordNotifier, LineNotifier, SlackNotifier, GmailNotifier
 
@@ -33,14 +35,16 @@ def generate_state_change_message(symbol: str, old_state: str, new_state: str, p
         'WATCH': '⚠️',
         'BASE': '📊',
         'BUY': '🚀',
-        'NORMAL': '📈'
+        'NORMAL': '📈',
+        'DEEP_BOTTOM': '💎'
     }
-    
+
     state_names = {
         'WATCH': '急落検知（WATCH入り）',
         'BASE': '低迷継続（BASE入り）',
         'BUY': '反転シグナル（BUY候補）',
-        'NORMAL': '通常状態'
+        'NORMAL': '通常状態',
+        'DEEP_BOTTOM': '長期投資機会（歴史的割安）'
     }
     
     emoji = emoji_map.get(new_state, '📌')
@@ -103,6 +107,12 @@ def main():
     # 状態管理の初期化
     state_store = StateStore()
 
+    # Deep Bottom検出用のStateMachine
+    state_machine = StateMachine()
+
+    # Deep Bottom通知済みシンボルを追跡
+    deep_bottom_notified = set()
+
     logger.info("=== Price Movement Detection Bot Started ===")
     logger.info(f"Monitoring symbols: {', '.join(symbols)}")
     logger.info(f"Check interval: {check_interval}s ({check_interval/3600:.1f}h)")
@@ -150,6 +160,31 @@ def main():
                         logger.debug(f"{symbol}: Already notified, skipping")
                 else:
                     logger.debug(f"{symbol}: No state change")
+
+                # Deep Bottom検出（長期投資向け、独立したチェック）
+                deep_bottom_detected, metrics = state_machine.check_deep_bottom(symbol)
+
+                if deep_bottom_detected:
+                    if symbol not in deep_bottom_notified:
+                        logger.info(
+                            f"DEEP_BOTTOM detected for {symbol}: "
+                            f"drawdown={metrics.get('drawdown_pct', 0):.1f}%, "
+                            f"RSI={metrics.get('rsi_14', 0):.1f}"
+                        )
+
+                        # Discord通知（DiscordNotifierのみ対応）
+                        for notifier in notifiers:
+                            if isinstance(notifier, DiscordNotifier):
+                                notifier.notify_deep_bottom(symbol, metrics)
+
+                        deep_bottom_notified.add(symbol)
+                    else:
+                        logger.debug(f"{symbol}: DEEP_BOTTOM already notified")
+                else:
+                    # Deep Bottom条件を満たさなくなったら通知済みリストから削除
+                    if symbol in deep_bottom_notified:
+                        deep_bottom_notified.discard(symbol)
+                        logger.info(f"{symbol}: DEEP_BOTTOM condition no longer met")
 
             # 次のチェックまで待機
             logger.debug(f"Waiting {check_interval}s until next check...")
