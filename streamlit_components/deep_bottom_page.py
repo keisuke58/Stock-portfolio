@@ -5,7 +5,7 @@ Deep Bottom Detection Page
 """
 import streamlit as st
 import pandas as pd
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 from datetime import datetime
 import time
 import sys
@@ -14,7 +14,95 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from signals.state_machine import StateMachine
-from core.constants import DEEP_BOTTOM_THRESHOLDS
+from signals import is_crypto_symbol
+from core.constants import DEEP_BOTTOM_THRESHOLDS, CRYPTO_SYMBOLS, ETF_SYMBOLS, TECH_SYMBOLS
+
+
+# セクター別銘柄定義
+SECTOR_SYMBOLS = {
+    'テクノロジー': [
+        'AAPL', 'MSFT', 'GOOGL', 'META', 'NVDA', 'AMD', 'INTC', 'CRM', 'ADBE', 'ORCL',
+        'CSCO', 'IBM', 'QCOM', 'TXN', 'AVGO', 'MU', 'AMAT', 'LRCX', 'KLAC', 'MRVL',
+        'NOW', 'SNOW', 'PLTR', 'CRWD', 'ZS', 'NET', 'DDOG', 'MDB', 'TEAM', 'OKTA'
+    ],
+    'ヘルスケア': [
+        'JNJ', 'UNH', 'PFE', 'ABBV', 'MRK', 'LLY', 'TMO', 'ABT', 'DHR', 'BMY',
+        'AMGN', 'GILD', 'ISRG', 'MDT', 'SYK', 'REGN', 'VRTX', 'ZTS', 'BDX', 'BSX'
+    ],
+    '金融': [
+        'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'BLK', 'SCHW', 'AXP', 'V',
+        'MA', 'PYPL', 'SQ', 'COIN', 'HOOD', 'SOFI', 'ALLY', 'COF', 'DFS', 'USB'
+    ],
+    '消費財': [
+        'AMZN', 'TSLA', 'HD', 'NKE', 'MCD', 'SBUX', 'TGT', 'COST', 'WMT', 'LOW',
+        'TJX', 'ROST', 'DG', 'DLTR', 'BBY', 'ORLY', 'AZO', 'CMG', 'DPZ', 'YUM'
+    ],
+    'エネルギー': [
+        'XOM', 'CVX', 'COP', 'EOG', 'SLB', 'MPC', 'PSX', 'VLO', 'OXY', 'HAL',
+        'DVN', 'FANG', 'PXD', 'HES', 'BKR', 'KMI', 'WMB', 'OKE', 'TRGP', 'LNG'
+    ],
+    '通信': [
+        'NFLX', 'DIS', 'CMCSA', 'T', 'VZ', 'TMUS', 'CHTR', 'WBD', 'PARA', 'FOX',
+        'RBLX', 'TTWO', 'EA', 'ATVI', 'MTCH', 'SNAP', 'PINS', 'SPOT', 'TTD', 'ROKU'
+    ],
+    '産業': [
+        'CAT', 'DE', 'BA', 'HON', 'UPS', 'RTX', 'LMT', 'GE', 'MMM', 'EMR',
+        'ITW', 'PH', 'ROK', 'ETN', 'CMI', 'PCAR', 'FAST', 'URI', 'ODFL', 'DAL'
+    ],
+    '素材': [
+        'LIN', 'APD', 'ECL', 'SHW', 'FCX', 'NEM', 'NUE', 'DOW', 'DD', 'PPG',
+        'VMC', 'MLM', 'ALB', 'CTVA', 'CF', 'MOS', 'FMC', 'IFF', 'CE', 'EMN'
+    ],
+    '不動産': [
+        'AMT', 'PLD', 'CCI', 'EQIX', 'PSA', 'SPG', 'O', 'WELL', 'DLR', 'AVB',
+        'EQR', 'VTR', 'ARE', 'MAA', 'UDR', 'ESS', 'INVH', 'SUI', 'ELS', 'PEAK'
+    ],
+    '公益事業': [
+        'NEE', 'DUK', 'SO', 'D', 'AEP', 'SRE', 'XEL', 'ED', 'EXC', 'WEC',
+        'ES', 'PEG', 'AWK', 'AEE', 'CMS', 'DTE', 'ETR', 'FE', 'PPL', 'EVRG'
+    ]
+}
+
+# インデックス銘柄
+INDEX_SYMBOLS = {
+    'S&P 500 主要': [
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK-B',
+        'UNH', 'XOM', 'JNJ', 'JPM', 'V', 'PG', 'MA', 'AVGO', 'HD', 'CVX',
+        'ABBV', 'COST', 'ADBE', 'MRK', 'PEP', 'TMO', 'CSCO', 'WMT', 'DIS',
+        'ABT', 'ACN', 'DHR', 'VZ', 'NFLX', 'CMCSA', 'NKE', 'PM', 'TXN'
+    ],
+    'NASDAQ 100': [
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO',
+        'COST', 'ADBE', 'PEP', 'CSCO', 'NFLX', 'AMD', 'INTC', 'CMCSA',
+        'TXN', 'QCOM', 'AMGN', 'INTU', 'HON', 'AMAT', 'BKNG', 'ISRG',
+        'ADP', 'SBUX', 'GILD', 'MU', 'ADI', 'REGN', 'LRCX', 'PANW'
+    ],
+    'ダウ30': [
+        'AAPL', 'MSFT', 'UNH', 'GS', 'HD', 'MCD', 'AMGN', 'V', 'CAT', 'BA',
+        'HON', 'TRV', 'AXP', 'JNJ', 'CRM', 'JPM', 'IBM', 'PG', 'CVX', 'MRK',
+        'DIS', 'NKE', 'KO', 'WMT', 'DOW', 'CSCO', 'MMM', 'VZ', 'INTC', 'WBA'
+    ]
+}
+
+# 暗号通貨カテゴリ
+CRYPTO_CATEGORIES = {
+    'メジャー': ['BTC', 'ETH'],
+    'Layer 1': ['SOL', 'ADA', 'AVAX', 'DOT', 'ATOM', 'NEAR', 'FTM', 'ALGO'],
+    'Layer 2': ['MATIC', 'ARB', 'OP', 'IMX'],
+    'DeFi': ['UNI', 'AAVE', 'MKR', 'CRV', 'COMP', 'SUSHI', 'YFI', 'SNX'],
+    'ミーム': ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK'],
+    '取引所': ['BNB', 'CRO', 'FTT', 'OKB', 'LEO']
+}
+
+# ETFカテゴリ
+ETF_CATEGORIES = {
+    '主要指数': ['SPY', 'QQQ', 'DIA', 'IWM', 'VTI', 'VOO', 'IVV'],
+    'セクター': ['XLK', 'XLF', 'XLV', 'XLE', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE'],
+    '国際': ['EFA', 'VEU', 'EEM', 'VWO', 'IEFA', 'ACWI'],
+    '債券': ['BND', 'AGG', 'TLT', 'LQD', 'HYG', 'TIP', 'VCSH'],
+    'コモディティ': ['GLD', 'SLV', 'USO', 'UNG', 'DBA', 'DBC'],
+    'テーマ': ['ARKK', 'ARKG', 'ARKF', 'ARKW', 'ARKQ', 'BOTZ', 'ROBO', 'HACK']
+}
 
 
 def analyze_single_symbol(state_machine: StateMachine, symbol: str) -> Optional[Dict]:
@@ -120,15 +208,31 @@ def render_deep_bottom_page(symbols: List[str]):
     st.subheader("🔍 銘柄スキャン")
 
     # タブで分ける
-    tab1, tab2, tab3 = st.tabs(["🚀 クイックスキャン", "🌐 全銘柄スキャン", "📝 カスタム選択"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "🚀 クイック",
+        "🏢 セクター別",
+        "📊 インデックス",
+        "🪙 暗号通貨",
+        "🌐 全銘柄",
+        "📝 カスタム"
+    ])
 
     with tab1:
         render_quick_scan(symbols)
 
     with tab2:
-        render_full_scan(symbols)
+        render_sector_scan(symbols)
 
     with tab3:
+        render_index_scan(symbols)
+
+    with tab4:
+        render_crypto_scan(symbols)
+
+    with tab5:
+        render_full_scan(symbols)
+
+    with tab6:
         render_custom_scan(symbols)
 
     # 結果表示
@@ -140,17 +244,188 @@ def render_quick_scan(symbols: List[str]):
     """クイックスキャン（主要銘柄のみ）"""
     st.markdown("**主要な暗号通貨・株式を素早くスキャン**")
 
+    # プリセット選択
+    preset = st.radio(
+        "プリセット",
+        ["トップ30（推奨）", "トップ50", "トップ100", "暗号通貨のみ", "米国株のみ"],
+        horizontal=True,
+        key="quick_preset"
+    )
+
     # 主要銘柄リスト
-    major_symbols = [
-        'BTC', 'ETH', 'SOL', 'BNB', 'ADA', 'XRP', 'DOGE', 'DOT', 'MATIC', 'AVAX',
+    major_crypto = ['BTC', 'ETH', 'SOL', 'BNB', 'ADA', 'XRP', 'DOGE', 'DOT', 'MATIC', 'AVAX', 'LINK', 'UNI', 'ATOM', 'LTC']
+    major_stocks = [
         'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AMD', 'INTC', 'CRM',
-        'SPY', 'QQQ', 'DIA', 'IWM', 'VTI', 'NFLX', 'PYPL', 'SQ', 'COIN', 'MSTR'
+        'NFLX', 'PYPL', 'SQ', 'COIN', 'MSTR', 'JPM', 'V', 'MA', 'DIS', 'NKE',
+        'HD', 'WMT', 'COST', 'PEP', 'KO', 'JNJ', 'PFE', 'ABBV', 'UNH', 'XOM',
+        'CVX', 'BA', 'CAT', 'GE', 'HON', 'LMT', 'RTX', 'GS', 'MS', 'BLK'
     ]
-    scan_symbols = [s for s in major_symbols if s in symbols]
+    major_etfs = ['SPY', 'QQQ', 'DIA', 'IWM', 'VTI', 'ARKK', 'GLD', 'TLT', 'XLK', 'XLF']
+
+    if preset == "トップ30（推奨）":
+        scan_list = major_crypto[:10] + major_stocks[:15] + major_etfs[:5]
+    elif preset == "トップ50":
+        scan_list = major_crypto[:14] + major_stocks[:30] + major_etfs[:6]
+    elif preset == "トップ100":
+        scan_list = major_crypto + major_stocks + major_etfs
+    elif preset == "暗号通貨のみ":
+        scan_list = major_crypto
+    else:  # 米国株のみ
+        scan_list = major_stocks[:30] + major_etfs[:5]
+
+    scan_symbols = [s for s in scan_list if s in symbols]
 
     st.info(f"対象: {len(scan_symbols)}銘柄")
 
-    if st.button("🚀 クイックスキャン開始", key="quick_scan"):
+    # 銘柄プレビュー
+    with st.expander("スキャン対象を確認"):
+        st.write(", ".join(scan_symbols))
+
+    if st.button("🚀 クイックスキャン開始", key="quick_scan", type="primary"):
+        run_scan(scan_symbols)
+
+
+def render_sector_scan(symbols: List[str]):
+    """セクター別スキャン"""
+    st.markdown("**セクター（業種）別にスキャン**")
+
+    # セクター選択
+    selected_sectors = st.multiselect(
+        "スキャンするセクターを選択",
+        list(SECTOR_SYMBOLS.keys()),
+        default=["テクノロジー"],
+        key="sector_select"
+    )
+
+    if not selected_sectors:
+        st.warning("セクターを選択してください")
+        return
+
+    # 選択されたセクターの銘柄を集める
+    scan_list = []
+    for sector in selected_sectors:
+        scan_list.extend(SECTOR_SYMBOLS.get(sector, []))
+
+    # 重複除去
+    scan_list = list(dict.fromkeys(scan_list))
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    # セクター別内訳
+    col1, col2 = st.columns(2)
+    with col1:
+        st.info(f"対象: {len(scan_symbols)}銘柄")
+    with col2:
+        for sector in selected_sectors:
+            count = len([s for s in SECTOR_SYMBOLS.get(sector, []) if s in symbols])
+            st.caption(f"{sector}: {count}銘柄")
+
+    # 銘柄プレビュー
+    with st.expander("スキャン対象を確認"):
+        for sector in selected_sectors:
+            sector_syms = [s for s in SECTOR_SYMBOLS.get(sector, []) if s in symbols]
+            st.markdown(f"**{sector}**: {', '.join(sector_syms)}")
+
+    if st.button("🏢 セクタースキャン開始", key="sector_scan", type="primary"):
+        run_scan(scan_symbols)
+
+
+def render_index_scan(symbols: List[str]):
+    """インデックス別スキャン"""
+    st.markdown("**主要インデックス構成銘柄をスキャン**")
+
+    # インデックス選択
+    selected_index = st.radio(
+        "インデックスを選択",
+        list(INDEX_SYMBOLS.keys()),
+        horizontal=True,
+        key="index_select"
+    )
+
+    scan_list = INDEX_SYMBOLS.get(selected_index, [])
+    scan_symbols = [s for s in scan_list if s in symbols]
+
+    st.info(f"対象: {len(scan_symbols)}銘柄 ({selected_index})")
+
+    # 銘柄プレビュー
+    with st.expander("スキャン対象を確認"):
+        st.write(", ".join(scan_symbols))
+
+    # ETFも含めるオプション
+    include_etfs = st.checkbox("関連ETFも含める", value=True, key="include_index_etf")
+
+    if include_etfs:
+        if selected_index == "S&P 500 主要":
+            etfs = ['SPY', 'VOO', 'IVV']
+        elif selected_index == "NASDAQ 100":
+            etfs = ['QQQ', 'QQQM']
+        else:
+            etfs = ['DIA']
+
+        scan_symbols.extend([e for e in etfs if e in symbols and e not in scan_symbols])
+        st.caption(f"ETF追加: {', '.join(etfs)}")
+
+    if st.button("📊 インデックススキャン開始", key="index_scan", type="primary"):
+        run_scan(scan_symbols)
+
+
+def render_crypto_scan(symbols: List[str]):
+    """暗号通貨スキャン"""
+    st.markdown("**暗号通貨をカテゴリ別にスキャン**")
+
+    # カテゴリ選択
+    col1, col2 = st.columns(2)
+
+    with col1:
+        selected_categories = st.multiselect(
+            "カテゴリを選択",
+            list(CRYPTO_CATEGORIES.keys()),
+            default=["メジャー", "Layer 1"],
+            key="crypto_category"
+        )
+
+    with col2:
+        # 全暗号通貨オプション
+        scan_all_crypto = st.checkbox("全ての暗号通貨をスキャン", value=False, key="all_crypto")
+
+    if scan_all_crypto:
+        # 全暗号通貨
+        scan_symbols = [s for s in symbols if is_crypto_symbol(s)]
+        st.info(f"対象: {len(scan_symbols)}暗号通貨（全て）")
+    else:
+        if not selected_categories:
+            st.warning("カテゴリを選択してください")
+            return
+
+        # 選択されたカテゴリの銘柄を集める
+        scan_list = []
+        for cat in selected_categories:
+            scan_list.extend(CRYPTO_CATEGORIES.get(cat, []))
+
+        scan_list = list(dict.fromkeys(scan_list))
+        scan_symbols = [s for s in scan_list if s in symbols]
+
+        st.info(f"対象: {len(scan_symbols)}銘柄")
+
+        # カテゴリ別内訳
+        for cat in selected_categories:
+            syms = [s for s in CRYPTO_CATEGORIES.get(cat, []) if s in symbols]
+            st.caption(f"{cat}: {', '.join(syms)}")
+
+    # 暗号通貨関連株も含める
+    include_crypto_stocks = st.checkbox(
+        "暗号通貨関連株も含める（COIN, MSTR, RIOT等）",
+        value=False,
+        key="include_crypto_stocks"
+    )
+
+    if include_crypto_stocks:
+        crypto_stocks = ['COIN', 'MSTR', 'RIOT', 'MARA', 'HUT', 'BITF', 'CLSK', 'CIFR']
+        for s in crypto_stocks:
+            if s in symbols and s not in scan_symbols:
+                scan_symbols.append(s)
+        st.caption(f"関連株追加: COIN, MSTR, RIOT等")
+
+    if st.button("🪙 暗号通貨スキャン開始", key="crypto_scan", type="primary"):
         run_scan(scan_symbols)
 
 
@@ -163,32 +438,59 @@ def render_full_scan(symbols: List[str]):
     remaining = total_symbols - scanned_count
 
     # 進捗表示
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("全銘柄数", total_symbols)
     with col2:
         st.metric("スキャン済み", scanned_count)
     with col3:
         st.metric("残り", remaining)
+    with col4:
+        detected_count = len([r for r in st.session_state.deep_bottom_results if r.get('detected')])
+        st.metric("検出済み", detected_count)
 
     if scanned_count > 0:
         st.progress(scanned_count / total_symbols)
 
-    # バッチサイズ設定
-    batch_size = st.select_slider(
-        "バッチサイズ（1回あたりの処理数）",
-        options=[10, 25, 50, 100, 200],
-        value=50,
-        key="batch_size"
-    )
+    # スキャン設定
+    st.markdown("#### ⚙️ スキャン設定")
 
-    # スキャン戦略
-    strategy = st.radio(
-        "スキャン戦略",
-        ["順番にスキャン", "ランダムにスキャン", "暗号通貨優先"],
-        horizontal=True,
-        key="scan_strategy"
-    )
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # バッチサイズ設定
+        batch_size = st.select_slider(
+            "バッチサイズ（1回あたりの処理数）",
+            options=[10, 25, 50, 100, 200, 500],
+            value=50,
+            key="batch_size"
+        )
+
+        # スキャン戦略
+        strategy = st.radio(
+            "スキャン戦略",
+            ["順番にスキャン", "ランダムにスキャン", "暗号通貨優先", "ETF優先", "テック優先"],
+            key="scan_strategy"
+        )
+
+    with col2:
+        # フィルタリングオプション
+        st.markdown("**プレフィルタ（高速化）**")
+
+        filter_type = st.checkbox("アセットタイプでフィルタ", value=False, key="filter_type")
+        if filter_type:
+            asset_types = st.multiselect(
+                "アセットタイプ",
+                ["株式", "ETF", "暗号通貨"],
+                default=["株式", "暗号通貨"],
+                key="asset_type_filter"
+            )
+
+        skip_scanned = st.checkbox("スキャン済みをスキップ", value=True, key="skip_scanned")
+
+    col1, col2, col3 = st.columns(3)
+
+    st.markdown("---")
 
     col1, col2, col3 = st.columns(3)
 
@@ -197,8 +499,20 @@ def render_full_scan(symbols: List[str]):
             # 未スキャンの銘柄を取得
             unscanned = [s for s in symbols if s not in st.session_state.deep_bottom_scanned]
 
+            # アセットタイプフィルタ適用
+            if filter_type and asset_types:
+                filtered = []
+                for s in unscanned:
+                    if "暗号通貨" in asset_types and is_crypto_symbol(s):
+                        filtered.append(s)
+                    elif "ETF" in asset_types and s in ETF_SYMBOLS:
+                        filtered.append(s)
+                    elif "株式" in asset_types and not is_crypto_symbol(s) and s not in ETF_SYMBOLS:
+                        filtered.append(s)
+                unscanned = filtered
+
             if not unscanned:
-                st.success("全銘柄のスキャンが完了しました！")
+                st.success("スキャン対象の銘柄がありません！")
                 return
 
             # 戦略に応じてソート
@@ -206,10 +520,17 @@ def render_full_scan(symbols: List[str]):
                 import random
                 random.shuffle(unscanned)
             elif strategy == "暗号通貨優先":
-                from signals import is_crypto_symbol
                 crypto = [s for s in unscanned if is_crypto_symbol(s)]
                 stocks = [s for s in unscanned if not is_crypto_symbol(s)]
                 unscanned = crypto + stocks
+            elif strategy == "ETF優先":
+                etfs = [s for s in unscanned if s in ETF_SYMBOLS]
+                others = [s for s in unscanned if s not in ETF_SYMBOLS]
+                unscanned = etfs + others
+            elif strategy == "テック優先":
+                tech = [s for s in unscanned if s in TECH_SYMBOLS]
+                others = [s for s in unscanned if s not in TECH_SYMBOLS]
+                unscanned = tech + others
 
             # バッチ取得
             batch = unscanned[:batch_size]
@@ -238,25 +559,117 @@ def render_custom_scan(symbols: List[str]):
     """カスタム選択スキャン"""
     st.markdown("**分析する銘柄を手動で選択**")
 
-    # 検索フィルタ
-    search = st.text_input("🔍 銘柄検索", key="symbol_search")
-
-    filtered_symbols = symbols
-    if search:
-        filtered_symbols = [s for s in symbols if search.upper() in s.upper()]
-
-    selected = st.multiselect(
-        f"銘柄を選択（{len(filtered_symbols)}件中）",
-        filtered_symbols,
-        default=[],
-        key="custom_symbols"
+    # 入力方法選択
+    input_method = st.radio(
+        "入力方法",
+        ["リストから選択", "テキスト入力（カンマ区切り）", "ウォッチリスト"],
+        horizontal=True,
+        key="input_method"
     )
 
+    if input_method == "リストから選択":
+        # フィルタオプション
+        col1, col2 = st.columns(2)
+        with col1:
+            search = st.text_input("🔍 銘柄検索", key="symbol_search")
+        with col2:
+            type_filter = st.selectbox(
+                "タイプ",
+                ["全て", "株式のみ", "ETFのみ", "暗号通貨のみ"],
+                key="type_filter_custom"
+            )
+
+        filtered_symbols = symbols
+
+        # 検索フィルタ
+        if search:
+            filtered_symbols = [s for s in filtered_symbols if search.upper() in s.upper()]
+
+        # タイプフィルタ
+        if type_filter == "株式のみ":
+            filtered_symbols = [s for s in filtered_symbols if not is_crypto_symbol(s) and s not in ETF_SYMBOLS]
+        elif type_filter == "ETFのみ":
+            filtered_symbols = [s for s in filtered_symbols if s in ETF_SYMBOLS]
+        elif type_filter == "暗号通貨のみ":
+            filtered_symbols = [s for s in filtered_symbols if is_crypto_symbol(s)]
+
+        selected = st.multiselect(
+            f"銘柄を選択（{len(filtered_symbols)}件中）",
+            filtered_symbols,
+            default=[],
+            key="custom_symbols"
+        )
+
+    elif input_method == "テキスト入力（カンマ区切り）":
+        st.markdown("銘柄シンボルをカンマ区切りで入力してください")
+        text_input = st.text_area(
+            "銘柄リスト",
+            placeholder="AAPL, MSFT, GOOGL, BTC, ETH",
+            key="text_symbols"
+        )
+
+        if text_input:
+            # パース
+            input_symbols = [s.strip().upper() for s in text_input.replace('\n', ',').split(',') if s.strip()]
+            selected = [s for s in input_symbols if s in symbols]
+            invalid = [s for s in input_symbols if s not in symbols]
+
+            if selected:
+                st.success(f"有効: {len(selected)}銘柄")
+            if invalid:
+                st.warning(f"無効（リストにない）: {', '.join(invalid[:10])}{'...' if len(invalid) > 10 else ''}")
+        else:
+            selected = []
+
+    else:  # ウォッチリスト
+        st.markdown("**保存されたウォッチリスト**")
+
+        # ウォッチリスト管理
+        if 'watchlist' not in st.session_state:
+            st.session_state.watchlist = []
+
+        # 既存のウォッチリスト表示
+        if st.session_state.watchlist:
+            st.info(f"ウォッチリスト: {len(st.session_state.watchlist)}銘柄")
+            st.write(", ".join(st.session_state.watchlist))
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🗑️ ウォッチリストをクリア", key="clear_watchlist"):
+                    st.session_state.watchlist = []
+                    st.rerun()
+        else:
+            st.info("ウォッチリストは空です")
+
+        # 追加
+        new_symbols = st.text_input(
+            "追加する銘柄（カンマ区切り）",
+            placeholder="AAPL, BTC, NVDA",
+            key="add_watchlist"
+        )
+
+        if st.button("➕ ウォッチリストに追加", key="add_to_watchlist"):
+            if new_symbols:
+                to_add = [s.strip().upper() for s in new_symbols.split(',') if s.strip()]
+                valid_adds = [s for s in to_add if s in symbols and s not in st.session_state.watchlist]
+                st.session_state.watchlist.extend(valid_adds)
+                st.success(f"{len(valid_adds)}銘柄を追加しました")
+                st.rerun()
+
+        selected = st.session_state.watchlist
+
     if selected:
+        st.markdown("---")
         st.info(f"選択中: {len(selected)}銘柄")
 
-        if st.button("🔍 選択銘柄をスキャン", key="custom_scan"):
+        # プレビュー
+        with st.expander("選択銘柄を確認"):
+            st.write(", ".join(selected))
+
+        if st.button("🔍 選択銘柄をスキャン", key="custom_scan", type="primary"):
             run_scan(selected)
+    else:
+        st.info("銘柄を選択してください")
 
 
 def run_scan(symbols: List[str]):
