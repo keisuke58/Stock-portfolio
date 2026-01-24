@@ -853,3 +853,551 @@ class FeatureCalculator:
             'risk_score': risk_score,
             'components': components
         }
+
+    # ============================================
+    # Deep Bottom Scoring V2 - Enhanced Accuracy
+    # ============================================
+
+    @staticmethod
+    def calculate_volume_score(prices_with_volume: List[Tuple[datetime, float, float]]) -> dict:
+        """
+        出来高に基づく底打ちシグナルを計算
+
+        Args:
+            prices_with_volume: [(datetime, price, volume), ...]
+
+        Returns:
+            {
+                'climax_ratio': float,    # 直近最大出来高 / 平均出来高
+                'dryup_ratio': float,     # 直近平均出来高 / 20日平均
+                'volume_trend': float,    # 出来高トレンド（傾き）
+                'climax_score': int,      # 0-8
+                'dryup_score': int,       # 0-5
+                'trend_score': int,       # 0-2
+                'total_score': int        # 0-15
+            }
+        """
+        if not prices_with_volume or len(prices_with_volume) < 25:
+            return {
+                'climax_ratio': 0, 'dryup_ratio': 1.0, 'volume_trend': 0,
+                'climax_score': 0, 'dryup_score': 0, 'trend_score': 0, 'total_score': 0
+            }
+
+        volumes = [v for _, _, v in prices_with_volume]
+
+        # Filter out zero volumes
+        valid_volumes = [v for v in volumes if v > 0]
+        if len(valid_volumes) < 20:
+            return {
+                'climax_ratio': 0, 'dryup_ratio': 1.0, 'volume_trend': 0,
+                'climax_score': 0, 'dryup_score': 0, 'trend_score': 0, 'total_score': 0
+            }
+
+        avg_volume = sum(valid_volumes[-20:]) / min(20, len(valid_volumes[-20:]))
+
+        if avg_volume == 0:
+            return {
+                'climax_ratio': 0, 'dryup_ratio': 1.0, 'volume_trend': 0,
+                'climax_score': 0, 'dryup_score': 0, 'trend_score': 0, 'total_score': 0
+            }
+
+        # Climax volume detection (capitulation)
+        recent_volumes = volumes[-5:]
+        max_recent_volume = max(recent_volumes) if recent_volumes else 0
+        climax_ratio = max_recent_volume / avg_volume if avg_volume > 0 else 0
+
+        # Volume dryup (exhaustion)
+        recent_avg = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
+        dryup_ratio = recent_avg / avg_volume if avg_volume > 0 else 1.0
+
+        # Volume trend (decreasing selling pressure)
+        if len(recent_volumes) >= 5:
+            # Simple linear regression slope
+            x_mean = 2  # Mean of [0,1,2,3,4]
+            y_mean = sum(recent_volumes) / 5
+            numerator = sum((i - x_mean) * (v - y_mean) for i, v in enumerate(recent_volumes))
+            denominator = sum((i - x_mean) ** 2 for i in range(5))
+            vol_trend = numerator / denominator if denominator != 0 else 0
+        else:
+            vol_trend = 0
+
+        # Calculate scores
+        climax_score = 8 if climax_ratio >= 2.0 else (5 if climax_ratio >= 1.5 else 0)
+        dryup_score = 5 if dryup_ratio <= 0.5 else (3 if dryup_ratio <= 0.7 else 0)
+        trend_score = 2 if vol_trend < 0 else 0
+
+        return {
+            'climax_ratio': round(climax_ratio, 2),
+            'dryup_ratio': round(dryup_ratio, 2),
+            'volume_trend': round(vol_trend, 2),
+            'climax_score': climax_score,
+            'dryup_score': dryup_score,
+            'trend_score': trend_score,
+            'total_score': climax_score + dryup_score + trend_score
+        }
+
+    @staticmethod
+    def calculate_ma_distance_score(current_price: float, ma200: float) -> dict:
+        """
+        200日移動平均線からの距離をスコア化
+
+        Args:
+            current_price: 現在価格
+            ma200: 200日移動平均
+
+        Returns:
+            {'ma_distance_pct': float, 'ma_distance_score': int}
+        """
+        if ma200 is None or ma200 <= 0 or current_price >= ma200:
+            return {'ma_distance_pct': 0, 'ma_distance_score': 0}
+
+        distance_pct = (ma200 - current_price) / ma200 * 100
+
+        if distance_pct >= 50:
+            score = 10
+        elif distance_pct >= 30:
+            score = 7
+        elif distance_pct >= 20:
+            score = 5
+        elif distance_pct >= 10:
+            score = 3
+        else:
+            score = 0
+
+        return {'ma_distance_pct': round(distance_pct, 2), 'ma_distance_score': score}
+
+    @staticmethod
+    def calculate_exhaustion_days(prices: List[Tuple[datetime, float]], rsi_threshold: float = 30) -> dict:
+        """
+        売られ過ぎ状態が続いた日数を計算
+
+        Args:
+            prices: 価格データ
+            rsi_threshold: 売られ過ぎとみなすRSI閾値
+
+        Returns:
+            {'exhaustion_days': int, 'exhaustion_score': int}
+        """
+        if len(prices) < 20:
+            return {'exhaustion_days': 0, 'exhaustion_score': 0}
+
+        # Calculate RSI for recent days
+        consecutive_oversold = 0
+
+        # Check backward from most recent
+        for i in range(min(20, len(prices) - 14)):
+            end_idx = len(prices) - i
+            if end_idx < 15:
+                break
+            subset = prices[:end_idx]
+            rsi = FeatureCalculator.calculate_rsi(subset, 14)
+            if rsi is not None and rsi <= rsi_threshold:
+                consecutive_oversold += 1
+            else:
+                break
+
+        if consecutive_oversold >= 5:
+            score = 5
+        elif consecutive_oversold >= 3:
+            score = 3
+        else:
+            score = 0
+
+        return {'exhaustion_days': consecutive_oversold, 'exhaustion_score': score}
+
+    @staticmethod
+    def calculate_synchronization_bonus(prices: List[Tuple[datetime, float]]) -> dict:
+        """
+        複数指標の同時シグナルボーナスを計算
+
+        Returns:
+            {'sync_bonus': int, 'sync_details': list}
+        """
+        if len(prices) < 50:
+            return {'sync_bonus': 0, 'sync_details': []}
+
+        bonus = 0
+        details = []
+
+        # Get indicator values
+        rsi = FeatureCalculator.calculate_rsi(prices, 14)
+        stoch = FeatureCalculator.calculate_stochastic(prices)
+        bb = FeatureCalculator.calculate_bollinger_position(prices)
+        divergence = FeatureCalculator.calculate_rsi_divergence(prices)
+        macd = FeatureCalculator.calculate_macd(prices)
+        higher_lows = FeatureCalculator.calculate_higher_lows(prices)
+        support = FeatureCalculator.calculate_support_level(prices)
+        consolidation = FeatureCalculator.calculate_consolidation(prices)
+
+        # Triple oversold: RSI + Stochastic + Bollinger
+        triple_oversold = (
+            (rsi is not None and rsi <= 30) and
+            (stoch is not None and stoch.get('k', 100) <= 20) and
+            (bb is not None and bb.get('position', 1) <= 0.1)
+        )
+        if triple_oversold:
+            bonus += 5
+            details.append('triple_oversold')
+
+        # Divergence confluence: RSI + MACD divergence
+        rsi_div = divergence is not None and divergence.get('bullish_divergence', False)
+        macd_bullish = macd is not None and (macd.get('bullish_cross', False) or macd.get('histogram_rising', False))
+        if rsi_div and macd_bullish:
+            bonus += 3
+            details.append('divergence_confluence')
+
+        # Pattern alignment: higher lows + support + consolidation
+        has_higher_lows = higher_lows is not None and higher_lows.get('higher_lows', False)
+        at_support = support is not None and support.get('at_support', False)
+        is_consolidating = consolidation is not None and consolidation.get('is_consolidating', False)
+        if has_higher_lows and at_support and is_consolidating:
+            bonus += 2
+            details.append('pattern_alignment')
+
+        return {'sync_bonus': bonus, 'sync_details': details}
+
+    @staticmethod
+    def calculate_divergence_strength(prices: List[Tuple[datetime, float]]) -> dict:
+        """
+        RSIダイバージェンスの強度を計算（単なる有無ではなく強さを評価）
+
+        Returns:
+            {'divergence_strength': str, 'divergence_score': int, 'rsi_rise': float, 'price_drop': float}
+        """
+        if len(prices) < 30:
+            return {'divergence_strength': 'none', 'divergence_score': 0, 'rsi_rise': 0, 'price_drop': 0}
+
+        # Get RSI values for recent period
+        rsi_values = []
+        for i in range(20):
+            end_idx = len(prices) - 20 + i + 1
+            if end_idx < 15:
+                continue
+            subset = prices[:end_idx]
+            rsi = FeatureCalculator.calculate_rsi(subset, 14)
+            if rsi is not None:
+                rsi_values.append(rsi)
+
+        if len(rsi_values) < 10:
+            return {'divergence_strength': 'none', 'divergence_score': 0, 'rsi_rise': 0, 'price_drop': 0}
+
+        # Find lows in first and second half
+        price_values = [p[1] for p in prices[-20:]]
+        first_half_prices = price_values[:10]
+        second_half_prices = price_values[10:]
+        first_half_rsi = rsi_values[:len(rsi_values)//2]
+        second_half_rsi = rsi_values[len(rsi_values)//2:]
+
+        price_low1 = min(first_half_prices)
+        price_low2 = min(second_half_prices)
+        rsi_low1 = min(first_half_rsi) if first_half_rsi else 50
+        rsi_low2 = min(second_half_rsi) if second_half_rsi else 50
+
+        # Check for bullish divergence: price makes lower low, RSI makes higher low
+        if price_low2 >= price_low1 or rsi_low2 <= rsi_low1:
+            return {'divergence_strength': 'none', 'divergence_score': 0, 'rsi_rise': 0, 'price_drop': 0}
+
+        # Calculate strength
+        price_drop = (price_low1 - price_low2) / price_low1 * 100 if price_low1 > 0 else 0
+        rsi_rise = rsi_low2 - rsi_low1
+
+        if rsi_rise >= 10 and price_drop >= 5:
+            strength = 'strong'
+            score = 10
+        elif rsi_rise >= 5:
+            strength = 'moderate'
+            score = 6
+        else:
+            strength = 'weak'
+            score = 3
+
+        return {
+            'divergence_strength': strength,
+            'divergence_score': score,
+            'rsi_rise': round(rsi_rise, 2),
+            'price_drop': round(price_drop, 2)
+        }
+
+    @staticmethod
+    def calculate_deep_bottom_score_v2(
+        prices: List[Tuple[datetime, float]],
+        prices_with_volume: List[Tuple[datetime, float, float]] = None
+    ) -> Optional[dict]:
+        """
+        Deep Bottom V2スコアを計算（出来高確認とシンクボーナス付き）
+
+        新スコアリング（150点満点→100点に正規化）:
+        - Value: 50点 (ATH下落25 + 52週近接15 + MA距離10)
+        - Technical: 40点 (RSI15 + BB10 + サポート10 + 疲弊日数5)
+        - Momentum: 35点 (ダイバージェンス10 + 安値切り上げ10 + MACD8 + ストキャス7)
+        - Volume: 15点 (クライマックス8 + ドライアップ5 + トレンド2)
+        - Sync: 10点 (トリプル5 + ダイバ合流3 + パターン2)
+        - Risk: -30まで
+
+        Returns:
+            {
+                'total_score': float,
+                'signal_strength': str or None,
+                'confidence': int,
+                'component_scores': dict,
+                'risk': dict,
+                'volume_confirmed': bool
+            }
+        """
+        if len(prices) < 100:
+            return None
+
+        # === VALUE SCORE (50 max) ===
+        # ATH Drawdown (0-25)
+        drawdown = FeatureCalculator.calculate_drawdown_from_ath(prices)
+        if drawdown is not None:
+            if drawdown >= 80:
+                ath_score = 25
+            elif drawdown >= 75:
+                ath_score = 22
+            elif drawdown >= 70:
+                ath_score = 18
+            elif drawdown >= 65:
+                ath_score = 14
+            elif drawdown >= 60:
+                ath_score = 10
+            else:
+                ath_score = 0
+        else:
+            ath_score = 0
+            drawdown = 0
+
+        # 52-Week Proximity (0-15)
+        proximity = FeatureCalculator.calculate_52week_low_proximity(prices)
+        if proximity is not None:
+            if proximity <= 0.05:
+                week52_score = 15
+            elif proximity <= 0.10:
+                week52_score = 12
+            elif proximity <= 0.15:
+                week52_score = 8
+            elif proximity <= 0.20:
+                week52_score = 5
+            else:
+                week52_score = 0
+        else:
+            week52_score = 0
+            proximity = 1.0
+
+        # MA Distance (0-10)
+        ma200 = FeatureCalculator.calculate_moving_average(prices, 200)
+        current_price = prices[-1][1] if prices else 0
+        ma_dist = FeatureCalculator.calculate_ma_distance_score(current_price, ma200)
+
+        value_score = ath_score + week52_score + ma_dist['ma_distance_score']
+
+        # === TECHNICAL SCORE (40 max) ===
+        # RSI (0-15)
+        rsi = FeatureCalculator.calculate_rsi(prices, 14)
+        if rsi is not None:
+            if rsi <= 20:
+                rsi_score = 15
+            elif rsi <= 25:
+                rsi_score = 12
+            elif rsi <= 30:
+                rsi_score = 9
+            elif rsi <= 35:
+                rsi_score = 5
+            else:
+                rsi_score = 0
+        else:
+            rsi_score = 0
+            rsi = 50
+
+        # Bollinger (0-10)
+        bb = FeatureCalculator.calculate_bollinger_position(prices)
+        if bb is not None:
+            if bb.get('below_lower', False):
+                bb_score = 10
+            elif bb.get('position', 1) <= 0.15:
+                bb_score = 7
+            elif bb.get('position', 1) <= 0.25:
+                bb_score = 4
+            else:
+                bb_score = 0
+        else:
+            bb_score = 0
+
+        # Support Level (0-10)
+        support = FeatureCalculator.calculate_support_level(prices)
+        if support is not None:
+            touches = support.get('touches', 0)
+            if support.get('at_support', False) and touches >= 3:
+                support_score = 10
+            elif support.get('at_support', False) and touches >= 2:
+                support_score = 7
+            elif support.get('at_support', False):
+                support_score = 4
+            else:
+                support_score = 0
+        else:
+            support_score = 0
+
+        # Exhaustion Days (0-5)
+        exhaustion = FeatureCalculator.calculate_exhaustion_days(prices)
+
+        technical_score = rsi_score + bb_score + support_score + exhaustion['exhaustion_score']
+
+        # === MOMENTUM SCORE (35 max) ===
+        # Divergence Strength (0-10)
+        divergence = FeatureCalculator.calculate_divergence_strength(prices)
+
+        # Higher Lows (0-10)
+        higher_lows = FeatureCalculator.calculate_higher_lows(prices)
+        if higher_lows is not None:
+            hl_count = higher_lows.get('count', 0)
+            if hl_count >= 3:
+                hl_score = 10
+            elif hl_count >= 2:
+                hl_score = 7
+            elif higher_lows.get('higher_lows', False):
+                hl_score = 4
+            else:
+                hl_score = 0
+        else:
+            hl_score = 0
+
+        # MACD (0-8)
+        macd = FeatureCalculator.calculate_macd(prices)
+        if macd is not None:
+            if macd.get('bullish_cross', False) and macd.get('histogram_rising', False):
+                macd_score = 8
+            elif macd.get('bullish_cross', False):
+                macd_score = 5
+            elif macd.get('histogram_rising', False):
+                macd_score = 3
+            else:
+                macd_score = 0
+        else:
+            macd_score = 0
+
+        # Stochastic (0-7)
+        stoch = FeatureCalculator.calculate_stochastic(prices)
+        if stoch is not None:
+            if stoch.get('oversold', False) and stoch.get('bullish_cross', False):
+                stoch_score = 7
+            elif stoch.get('oversold', False):
+                stoch_score = 4
+            else:
+                stoch_score = 0
+        else:
+            stoch_score = 0
+
+        momentum_score = divergence['divergence_score'] + hl_score + macd_score + stoch_score
+
+        # === VOLUME SCORE (15 max) ===
+        if prices_with_volume:
+            volume_data = FeatureCalculator.calculate_volume_score(prices_with_volume)
+            volume_score = volume_data['total_score']
+        else:
+            volume_data = {'climax_score': 0, 'dryup_score': 0, 'trend_score': 0, 'total_score': 0}
+            volume_score = 0
+
+        # === SYNCHRONIZATION BONUS (10 max) ===
+        sync = FeatureCalculator.calculate_synchronization_bonus(prices)
+        sync_score = sync['sync_bonus']
+
+        # === RISK DEDUCTIONS ===
+        risk_deduction = 0
+        risk_factors = []
+
+        # Active crash (7-day return < -25%)
+        return_7d = FeatureCalculator.calculate_return(prices, 7)
+        if return_7d is not None and return_7d < -25:
+            risk_deduction += 20
+            risk_factors.append('active_crash')
+
+        # High volatility
+        volatility = FeatureCalculator.calculate_volatility(prices)
+        if volatility is not None and volatility > 6:
+            risk_deduction += 10
+            risk_factors.append('high_volatility')
+
+        # No volume confirmation (if volume data was provided)
+        if prices_with_volume and volume_score == 0:
+            risk_deduction += 5
+            risk_factors.append('no_volume_confirmation')
+
+        # === FINAL CALCULATION ===
+        raw_score = value_score + technical_score + momentum_score + volume_score + sync_score
+        risk_adjusted = raw_score - risk_deduction
+        final_score = min(100, max(0, risk_adjusted * 100 / 150))
+
+        # === SIGNAL STRENGTH ===
+        if final_score >= 75:
+            signal_strength = 'strong'
+        elif final_score >= 55:
+            signal_strength = 'moderate'
+        elif final_score >= 40:
+            signal_strength = 'weak'
+        else:
+            signal_strength = None
+
+        # === CONFIDENCE ===
+        indicators_triggered = sum([
+            ath_score >= 18,
+            week52_score >= 12,
+            rsi_score >= 9,
+            support_score >= 7,
+            divergence['divergence_score'] >= 6,
+            volume_score >= 8
+        ])
+        confidence = min(95, 50 + (indicators_triggered * 8))
+
+        return {
+            'total_score': round(final_score, 1),
+            'signal_strength': signal_strength,
+            'confidence': confidence,
+            'component_scores': {
+                'value': {
+                    'score': value_score,
+                    'max': 50,
+                    'details': {
+                        'ath_drawdown': {'value': drawdown, 'score': ath_score},
+                        'week52_proximity': {'value': proximity, 'score': week52_score},
+                        'ma_distance': ma_dist
+                    }
+                },
+                'technical': {
+                    'score': technical_score,
+                    'max': 40,
+                    'details': {
+                        'rsi': {'value': rsi, 'score': rsi_score},
+                        'bollinger': {'score': bb_score},
+                        'support': {'score': support_score},
+                        'exhaustion': exhaustion
+                    }
+                },
+                'momentum': {
+                    'score': momentum_score,
+                    'max': 35,
+                    'details': {
+                        'divergence': divergence,
+                        'higher_lows': {'score': hl_score},
+                        'macd': {'score': macd_score},
+                        'stochastic': {'score': stoch_score}
+                    }
+                },
+                'volume': {
+                    'score': volume_score,
+                    'max': 15,
+                    'details': volume_data
+                },
+                'sync_bonus': {
+                    'score': sync_score,
+                    'max': 10,
+                    'details': sync
+                }
+            },
+            'risk': {
+                'deduction': risk_deduction,
+                'factors': risk_factors
+            },
+            'raw_score': raw_score,
+            'volume_confirmed': volume_score >= 8
+        }

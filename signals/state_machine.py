@@ -355,6 +355,132 @@ class StateMachine:
 
         return (detected, metrics)
 
+    def check_deep_bottom_advanced_v2(
+        self,
+        symbol: str,
+        include_volume: bool = True,
+        include_fundamentals: bool = True
+    ) -> Tuple[bool, Optional[Dict]]:
+        """
+        Deep Bottom検出（V2: 出来高確認とシンクボーナス付き）
+
+        改善点:
+        - 出来高クライマックス/ドライアップ検出 (+15点)
+        - 複数指標同時シグナルボーナス (+10点)
+        - MA距離のグラデーションスコア (+10点)
+        - 疲弊日数スコア (+5点)
+        - ダイバージェンス強度評価
+
+        Args:
+            symbol: 銘柄シンボル
+            include_volume: 出来高データを含むか
+            include_fundamentals: ファンダメンタルスコアを含むか
+
+        Returns:
+            (detected: bool, metrics: dict)
+        """
+        # データ取得
+        is_crypto = is_crypto_symbol(symbol)
+
+        if is_crypto:
+            if include_volume:
+                prices_with_volume = self.coingecko_fetcher.get_historical_prices_with_volume(symbol, days=365)
+                if prices_with_volume:
+                    prices = [(dt, p) for dt, p, _ in prices_with_volume]
+                else:
+                    prices = self.coingecko_fetcher.get_historical_prices(symbol, days=365)
+                    prices_with_volume = None
+            else:
+                prices = self.coingecko_fetcher.get_historical_prices(symbol, days=365)
+                prices_with_volume = None
+        else:
+            if include_volume:
+                prices_with_volume = self.yahoo_fetcher.get_historical_prices_with_volume(symbol, days=365)
+                if prices_with_volume:
+                    prices = [(dt, p) for dt, p, _ in prices_with_volume]
+                else:
+                    prices = self.yahoo_fetcher.get_historical_prices(symbol, days=365)
+                    prices_with_volume = None
+            else:
+                prices = self.yahoo_fetcher.get_historical_prices(symbol, days=365)
+                prices_with_volume = None
+
+        if not prices or len(prices) < 100:
+            return (False, None)
+
+        # V2スコア計算
+        score_result = FeatureCalculator.calculate_deep_bottom_score_v2(prices, prices_with_volume)
+
+        if score_result is None:
+            return (False, None)
+
+        current_price = prices[-1][1] if prices else 0
+
+        metrics = {
+            'symbol': symbol,
+            'current_price': current_price,
+            'scoring_version': 'v2',
+
+            # V2スコア結果
+            'total_score': score_result['total_score'],
+            'signal_strength': score_result['signal_strength'],
+            'confidence': score_result['confidence'],
+            'volume_confirmed': score_result['volume_confirmed'],
+
+            # コンポーネント別スコア
+            'value_score': score_result['component_scores']['value'],
+            'technical_score': score_result['component_scores']['technical'],
+            'momentum_score': score_result['component_scores']['momentum'],
+            'volume_score': score_result['component_scores']['volume'],
+            'sync_bonus': score_result['component_scores']['sync_bonus'],
+
+            # リスク
+            'risk_deduction': score_result['risk']['deduction'],
+            'risk_factors': score_result['risk']['factors'],
+            'raw_score': score_result['raw_score'],
+
+            'timestamp': datetime.now().isoformat()
+        }
+
+        signal_strength = score_result['signal_strength']
+
+        # ファンダメンタルスコア統合（株式のみ）
+        if include_fundamentals and not is_crypto:
+            try:
+                fundamental_scorer = FundamentalScorer()
+                fundamental_result = fundamental_scorer.calculate_score(symbol)
+
+                if fundamental_result:
+                    metrics['fundamental_score'] = fundamental_result.total_score
+                    metrics['fundamental_health'] = fundamental_result.health_status.value
+                    metrics['fundamental_warnings'] = fundamental_result.warnings
+                    metrics['fundamental_details'] = {
+                        'pe_score': fundamental_result.pe_score,
+                        'pb_score': fundamental_result.pb_score,
+                        'fcf_score': fundamental_result.fcf_score,
+                        'debt_score': fundamental_result.debt_score,
+                        'growth_score': fundamental_result.growth_score,
+                    }
+
+                    # 調整後総合スコア: V2テクニカル(75) + ファンダメンタル(25) = 100
+                    technical_adjusted = score_result['total_score'] * 0.75
+                    metrics['adjusted_total_score'] = technical_adjusted + fundamental_result.total_score
+
+                    # VALUE_TRAPの場合はシグナル強度を下げる
+                    if fundamental_result.health_status == FundamentalHealth.VALUE_TRAP:
+                        if signal_strength == 'strong':
+                            signal_strength = 'moderate'
+                        elif signal_strength == 'moderate':
+                            signal_strength = 'weak'
+                        metrics['signal_strength'] = signal_strength
+                        metrics['fundamental_adjustment'] = 'downgraded due to value trap risk'
+            except Exception:
+                pass
+
+        detected = signal_strength in ['strong', 'moderate']
+
+        return (detected, metrics)
+
     def get_bottom_recommendation(self, symbol: str) -> Optional[Dict]:
         """
         底打ち投資の推奨を生成

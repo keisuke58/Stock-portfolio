@@ -222,7 +222,7 @@ VALUE_STOCKS = [
 ]
 
 
-def analyze_single_symbol(state_machine: StateMachine, symbol: str, advanced: bool = False) -> Optional[Dict]:
+def analyze_single_symbol(state_machine: StateMachine, symbol: str, advanced: bool = False, use_v2: bool = False) -> Optional[Dict]:
     """
     単一シンボルのDeep Bottom分析
 
@@ -230,12 +230,15 @@ def analyze_single_symbol(state_machine: StateMachine, symbol: str, advanced: bo
         state_machine: StateMachineインスタンス
         symbol: 分析対象シンボル
         advanced: 高度な分析を使用するか
+        use_v2: V2スコアリング（出来高確認付き）を使用するか
 
     Returns:
         分析結果辞書 or None
     """
     try:
-        if advanced:
+        if use_v2:
+            detected, metrics = state_machine.check_deep_bottom_advanced_v2(symbol)
+        elif advanced:
             detected, metrics = state_machine.check_deep_bottom_advanced(symbol)
         else:
             detected, metrics = state_machine.check_deep_bottom(symbol)
@@ -281,6 +284,33 @@ def analyze_single_symbol(state_machine: StateMachine, symbol: str, advanced: bo
                 result['bollinger'] = metrics.get('bollinger')
                 result['stochastic'] = metrics.get('stochastic')
                 result['macd'] = metrics.get('macd')
+
+            # V2スコアリング結果を追加
+            if use_v2 and metrics.get('scoring_version') == 'v2':
+                result['scoring_version'] = 'v2'
+                result['total_score'] = metrics.get('total_score', 0)
+                result['signal_strength'] = metrics.get('signal_strength')
+                result['confidence'] = metrics.get('confidence', 0)
+                result['volume_confirmed'] = metrics.get('volume_confirmed', False)
+
+                # コンポーネント別スコア
+                result['value_score'] = metrics.get('value_score', {})
+                result['technical_score'] = metrics.get('technical_score', {})
+                result['momentum_score'] = metrics.get('momentum_score', {})
+                result['volume_score'] = metrics.get('volume_score', {})
+                result['sync_bonus'] = metrics.get('sync_bonus', {})
+
+                # リスク情報
+                result['risk_deduction'] = metrics.get('risk_deduction', 0)
+                result['risk_factors'] = metrics.get('risk_factors', [])
+                result['raw_score'] = metrics.get('raw_score', 0)
+
+                # ファンダメンタル（株式のみ）
+                if metrics.get('fundamental_score') is not None:
+                    result['fundamental_score'] = metrics.get('fundamental_score')
+                    result['fundamental_health'] = metrics.get('fundamental_health')
+                    result['fundamental_warnings'] = metrics.get('fundamental_warnings', [])
+                    result['adjusted_total_score'] = metrics.get('adjusted_total_score')
 
             return result
     except Exception as e:
@@ -363,10 +393,12 @@ def render_deep_bottom_page(symbols: List[str]):
         st.session_state.deep_bottom_detected_live = []
     if 'advanced_mode' not in st.session_state:
         st.session_state.advanced_mode = False
+    if 'use_v2_scoring' not in st.session_state:
+        st.session_state.use_v2_scoring = False
 
     # 高度な分析モード切替
     st.markdown("### ⚙️ 分析設定")
-    col1, col2 = st.columns([1, 2])
+    col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
         advanced_mode = st.toggle(
             "🔬 高度な分析モード",
@@ -376,7 +408,17 @@ def render_deep_bottom_page(symbols: List[str]):
         )
         st.session_state.advanced_mode = advanced_mode
     with col2:
-        if advanced_mode:
+        use_v2 = st.toggle(
+            "📊 V2スコアリング",
+            value=st.session_state.use_v2_scoring,
+            key="v2_toggle",
+            help="出来高確認、シンクボーナス、MA距離スコア等の改良版スコアリング"
+        )
+        st.session_state.use_v2_scoring = use_v2
+    with col3:
+        if use_v2:
+            st.success("📊 V2: 出来高確認 + シンクボーナス + 改良スコアリング")
+        elif advanced_mode:
             st.info("🔬 高度な分析: スコアリング + 7つの追加指標を使用")
         else:
             st.info("📊 基本分析: 5つの条件でシンプルに判定")
@@ -1309,6 +1351,7 @@ def run_scan(symbols: List[str]):
     state_machine = StateMachine()
     results = []
     advanced = st.session_state.get('advanced_mode', False)
+    use_v2 = st.session_state.get('use_v2_scoring', False)
 
     progress_bar = st.progress(0)
     status = st.empty()
@@ -1318,10 +1361,10 @@ def run_scan(symbols: List[str]):
 
     for idx, symbol in enumerate(symbols):
         progress_bar.progress((idx + 1) / len(symbols))
-        mode_text = "🔬" if advanced else "📊"
+        mode_text = "📊V2" if use_v2 else ("🔬" if advanced else "📊")
         status.text(f"{mode_text} 分析中: {symbol} ({idx + 1}/{len(symbols)})")
 
-        result = analyze_single_symbol(state_machine, symbol, advanced=advanced)
+        result = analyze_single_symbol(state_machine, symbol, advanced=advanced, use_v2=use_v2)
         if result:
             results.append(result)
             st.session_state.deep_bottom_scanned.add(symbol)
@@ -1352,6 +1395,7 @@ def run_batch_scan(symbols: List[str], show_live: bool = True):
     state_machine = StateMachine()
     results = []
     advanced = st.session_state.get('advanced_mode', False)
+    use_v2 = st.session_state.get('use_v2_scoring', False)
 
     progress_bar = st.progress(0)
     status = st.empty()
@@ -1364,7 +1408,7 @@ def run_batch_scan(symbols: List[str], show_live: bool = True):
         progress_bar.progress((idx + 1) / len(symbols))
 
         elapsed = time.time() - start_time
-        mode_text = "🔬" if advanced else "📊"
+        mode_text = "📊V2" if use_v2 else ("🔬" if advanced else "📊")
         if idx > 0:
             avg_time = elapsed / idx
             remaining = avg_time * (len(symbols) - idx)
@@ -1372,7 +1416,7 @@ def run_batch_scan(symbols: List[str], show_live: bool = True):
         else:
             status.text(f"{mode_text} 分析中: {symbol} ({idx + 1}/{len(symbols)})")
 
-        result = analyze_single_symbol(state_machine, symbol, advanced=advanced)
+        result = analyze_single_symbol(state_machine, symbol, advanced=advanced, use_v2=use_v2)
         if result:
             results.append(result)
             st.session_state.deep_bottom_scanned.add(symbol)
@@ -1417,6 +1461,7 @@ def run_auto_scan(symbols: List[str], batch_size: int):
 
     state_machine = StateMachine()
     advanced = st.session_state.get('advanced_mode', False)
+    use_v2 = st.session_state.get('use_v2_scoring', False)
     total_batches = (len(unscanned) + batch_size - 1) // batch_size
 
     # 全体進捗
@@ -1428,6 +1473,8 @@ def run_auto_scan(symbols: List[str], batch_size: int):
     all_detected = []
     start_time = time.time()
     mode_text = "🔬" if advanced else "📊"
+    if use_v2:
+        mode_text = "🚀V2 " + mode_text
 
     for batch_idx in range(total_batches):
         batch_start = batch_idx * batch_size
@@ -1452,7 +1499,7 @@ def run_auto_scan(symbols: List[str], batch_size: int):
             else:
                 current_status.text(f"{mode_text} 分析中: {symbol} ({overall_done}/{len(unscanned)})")
 
-            result = analyze_single_symbol(state_machine, symbol, advanced=advanced)
+            result = analyze_single_symbol(state_machine, symbol, advanced=advanced, use_v2=use_v2)
             if result:
                 st.session_state.deep_bottom_scanned.add(symbol)
 
@@ -1762,6 +1809,95 @@ def display_deep_bottom_results(results: List[Dict]):
                         # ファンダメンタル調整の説明
                         if item.get('fundamental_adjustment'):
                             st.info(f"📉 {item['fundamental_adjustment']}")
+
+                # V2スコアリング詳細（出来高・シンク）
+                if item.get('scoring_version') == 'v2':
+                    with st.expander("📊 V2スコア詳細（出来高確認付き）"):
+                        v2_col1, v2_col2, v2_col3 = st.columns(3)
+
+                        with v2_col1:
+                            # 出来高スコア
+                            vol_score = item.get('volume_score', {})
+                            vol_total = vol_score.get('score', 0) if isinstance(vol_score, dict) else 0
+                            vol_confirmed = item.get('volume_confirmed', False)
+
+                            st.markdown("**📈 出来高スコア**")
+                            st.metric(
+                                "出来高",
+                                f"{vol_total}/15",
+                                "✅ 確認済" if vol_confirmed else "❌ 未確認"
+                            )
+
+                            vol_details = vol_score.get('details', {}) if isinstance(vol_score, dict) else {}
+                            if vol_details:
+                                climax = vol_details.get('climax_score', 0)
+                                dryup = vol_details.get('dryup_score', 0)
+                                trend = vol_details.get('trend_score', 0)
+                                st.write(f"• クライマックス: {climax}/8")
+                                st.write(f"• ドライアップ: {dryup}/5")
+                                st.write(f"• トレンド: {trend}/2")
+
+                        with v2_col2:
+                            # シンクボーナス
+                            sync = item.get('sync_bonus', {})
+                            sync_score = sync.get('score', 0) if isinstance(sync, dict) else 0
+                            sync_details = sync.get('details', {}) if isinstance(sync, dict) else {}
+
+                            st.markdown("**🔄 シンクボーナス**")
+                            st.metric("シンク", f"{sync_score}/10")
+
+                            if sync_details:
+                                details_list = sync_details.get('sync_details', [])
+                                if details_list:
+                                    for detail in details_list:
+                                        detail_labels = {
+                                            'triple_oversold': '🔻 トリプル売られ過ぎ (+5)',
+                                            'divergence_confluence': '📈 ダイバージェンス合流 (+3)',
+                                            'pattern_alignment': '📐 パターン整列 (+2)'
+                                        }
+                                        st.write(detail_labels.get(detail, detail))
+
+                        with v2_col3:
+                            # リスク情報
+                            risk_deduction = item.get('risk_deduction', 0)
+                            risk_factors = item.get('risk_factors', [])
+
+                            st.markdown("**⚠️ リスク減点**")
+                            st.metric("減点", f"-{risk_deduction}")
+
+                            if risk_factors:
+                                risk_labels = {
+                                    'active_crash': '📉 急落中',
+                                    'high_volatility': '🌊 高ボラ',
+                                    'no_volume_confirmation': '❌ 出来高未確認'
+                                }
+                                for factor in risk_factors:
+                                    st.write(f"• {risk_labels.get(factor, factor)}")
+
+                        # コンポーネント別詳細
+                        st.markdown("---")
+                        st.markdown("**コンポーネント内訳**")
+
+                        comp_cols = st.columns(5)
+                        components = [
+                            ('value_score', '💎 Value', 50),
+                            ('technical_score', '🔧 Technical', 40),
+                            ('momentum_score', '🚀 Momentum', 35),
+                            ('volume_score', '📊 Volume', 15),
+                            ('sync_bonus', '🔄 Sync', 10)
+                        ]
+
+                        for col, (key, label, max_score) in zip(comp_cols, components):
+                            with col:
+                                comp_data = item.get(key, {})
+                                score = comp_data.get('score', 0) if isinstance(comp_data, dict) else 0
+                                pct = (score / max_score * 100) if max_score > 0 else 0
+                                st.metric(label, f"{score}/{max_score}", f"{pct:.0f}%")
+
+                        # 生スコアと信頼度
+                        raw_score = item.get('raw_score', 0)
+                        confidence = item.get('confidence', 0)
+                        st.caption(f"生スコア: {raw_score}/150 → 正規化: {item.get('total_score', 0)}/100 | 信頼度: {confidence}%")
 
                 st.markdown("---")
     else:

@@ -290,6 +290,53 @@ TECH_SYMBOLS: Set[str] = {
 }
 
 
+@dataclass(frozen=True)
+class DeepBottomScoringV2Config:
+    """
+    Enhanced Deep Bottom scoring configuration (V2).
+    New formula with volume confirmation and sync bonuses.
+    """
+    # Value thresholds
+    ATH_DRAWDOWN_EXCELLENT: float = 80.0  # Score 25
+    ATH_DRAWDOWN_GOOD: float = 75.0       # Score 22
+    ATH_DRAWDOWN_MIN: float = 70.0        # Score 18
+
+    # 52-Week proximity thresholds
+    WEEK52_EXCELLENT: float = 0.05        # Score 15
+    WEEK52_GOOD: float = 0.10             # Score 12
+    WEEK52_MIN: float = 0.15              # Score 8
+
+    # MA Distance thresholds
+    MA_DISTANCE_EXCELLENT: float = 50.0   # Score 10 (50%+ below MA200)
+    MA_DISTANCE_GOOD: float = 30.0        # Score 7
+    MA_DISTANCE_MIN: float = 10.0         # Score 3
+
+    # Volume thresholds
+    CLIMAX_VOLUME_STRONG: float = 2.0     # 2x average = 8 pts
+    CLIMAX_VOLUME_MODERATE: float = 1.5   # 1.5x average = 5 pts
+    DRYUP_VOLUME_STRONG: float = 0.5      # 0.5x average = 5 pts
+    DRYUP_VOLUME_MODERATE: float = 0.7    # 0.7x average = 3 pts
+
+    # Exhaustion thresholds
+    EXHAUSTION_DAYS_STRONG: int = 5       # Score 5
+    EXHAUSTION_DAYS_MODERATE: int = 3     # Score 3
+
+    # RSI thresholds (more granular)
+    RSI_EXTREME: float = 20.0             # Score 15
+    RSI_VERY_OVERSOLD: float = 25.0       # Score 12
+    RSI_OVERSOLD: float = 30.0            # Score 9
+    RSI_WEAK: float = 35.0                # Score 5
+
+    # Signal strength thresholds
+    SCORE_STRONG: float = 75.0
+    SCORE_MODERATE: float = 55.0
+    SCORE_WEAK: float = 40.0
+
+    # Risk thresholds
+    ACTIVE_CRASH_THRESHOLD: float = -25.0  # 7-day return
+    HIGH_VOLATILITY_THRESHOLD: float = 6.0
+
+
 # Singleton instances for easy import
 SIGNAL_THRESHOLDS = SignalThresholds()
 CACHE_TTL = CacheTTL()
@@ -301,3 +348,4 @@ SELECTION_CONFIG = SelectionConfig()
 DEEP_BOTTOM_THRESHOLDS = DeepBottomThresholds()
 DEEP_BOTTOM_BACKTEST_CONFIG = DeepBottomBacktestConfig()
 FUNDAMENTAL_SCORING_CONFIG = FundamentalScoringConfig()
+DEEP_BOTTOM_SCORING_V2_CONFIG = DeepBottomScoringV2Config()

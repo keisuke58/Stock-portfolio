@@ -234,6 +234,44 @@ class YahooFetcher:
             logger.warning(f"Error fetching fundamental data for {symbol}: {e}")
             return None
 
+    def get_historical_prices_with_volume(
+        self,
+        symbol: str,
+        days: int = 365
+    ) -> Optional[List[Tuple[datetime, float, float]]]:
+        """
+        履歴価格と出来高を取得（Deep Bottom V2スコアリング用）
+
+        Args:
+            symbol: 銘柄シンボル
+            days: 取得日数（デフォルト365日）
+
+        Returns:
+            [(datetime, price, volume), ...] or None
+        """
+        try:
+            ticker = yf.Ticker(symbol.upper())
+            hist = ticker.history(period=f"{days}d", interval="1d")
+
+            if hist.empty:
+                return None
+
+            result = []
+            for date, row in hist.iterrows():
+                dt = date.to_pydatetime() if hasattr(date, 'to_pydatetime') else datetime.fromtimestamp(date.timestamp())
+                # Make datetime timezone-naive for consistency
+                if dt.tzinfo is not None:
+                    dt = dt.replace(tzinfo=None)
+                price = float(row['Close'])
+                volume = float(row['Volume']) if 'Volume' in row else 0.0
+                result.append((dt, price, volume))
+
+            return sorted(result, key=lambda x: x[0])
+
+        except Exception as e:
+            logger.warning(f"Error fetching historical prices with volume for {symbol}: {e}")
+            return None
+
     def _get_coingecko_id(self, symbol: str) -> str:
         """Compatibility method for BaseFetcher interface."""
         return symbol.lower()

@@ -192,6 +192,56 @@ class CoinGeckoFetcher:
             logger.warning(f"Error fetching extended historical prices for {symbol}: {e}")
             return None
 
+    def get_historical_prices_with_volume(
+        self,
+        symbol: str,
+        days: int = 365
+    ) -> Optional[List[Tuple[datetime, float, float]]]:
+        """
+        履歴価格と出来高を取得（Deep Bottom V2スコアリング用）
+
+        Args:
+            symbol: 暗号通貨シンボル
+            days: 取得日数（デフォルト365日）
+
+        Returns:
+            [(datetime, price, volume), ...] or None
+        """
+        coin_id = self._get_coin_id(symbol)
+
+        try:
+            url = f'https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart'
+            params = {
+                'vs_currency': 'usd',
+                'days': min(days, 365),  # API limit
+                'interval': 'daily'
+            }
+
+            response = requests.get(url, params=params, timeout=API_TIMEOUTS.LONG_RUNNING)
+            response.raise_for_status()
+            data = response.json()
+
+            prices = data.get('prices', [])
+            volumes = data.get('total_volumes', [])
+
+            if not prices:
+                return None
+
+            # Match prices with volumes by timestamp
+            result = []
+            volume_dict = {int(ts_ms): vol for ts_ms, vol in volumes}
+
+            for ts_ms, price in prices:
+                dt = datetime.fromtimestamp(ts_ms / 1000)
+                volume = volume_dict.get(int(ts_ms), 0.0)
+                result.append((dt, float(price), float(volume)))
+
+            return sorted(result, key=lambda x: x[0])
+
+        except Exception as e:
+            logger.warning(f"Error fetching historical prices with volume for {symbol}: {e}")
+            return None
+
     def _get_coingecko_id(self, symbol: str) -> str:
         """Alias for _get_coin_id for BaseFetcher compatibility."""
         return self._get_coin_id(symbol)
