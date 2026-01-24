@@ -263,7 +263,9 @@ else:
         margin-top: 2rem;
     }
 </style>
-""", unsafe_allow_html=True)
+"""
+
+st.markdown(css_template, unsafe_allow_html=True)
 
 
 @st.cache_data(ttl=86400)  # 24時間キャッシュ（全銘柄リストは変更頻度が低い）
