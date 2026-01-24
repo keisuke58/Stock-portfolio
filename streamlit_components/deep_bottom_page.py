@@ -222,22 +222,26 @@ VALUE_STOCKS = [
 ]
 
 
-def analyze_single_symbol(state_machine: StateMachine, symbol: str) -> Optional[Dict]:
+def analyze_single_symbol(state_machine: StateMachine, symbol: str, advanced: bool = False) -> Optional[Dict]:
     """
     単一シンボルのDeep Bottom分析
 
     Args:
         state_machine: StateMachineインスタンス
         symbol: 分析対象シンボル
+        advanced: 高度な分析を使用するか
 
     Returns:
         分析結果辞書 or None
     """
     try:
-        detected, metrics = state_machine.check_deep_bottom(symbol)
+        if advanced:
+            detected, metrics = state_machine.check_deep_bottom_advanced(symbol)
+        else:
+            detected, metrics = state_machine.check_deep_bottom(symbol)
 
         if metrics:
-            return {
+            result = {
                 'symbol': symbol,
                 'detected': detected,
                 'current_price': metrics.get('current_price', 0),
@@ -247,9 +251,38 @@ def analyze_single_symbol(state_machine: StateMachine, symbol: str) -> Optional[
                 'rsi_14': metrics.get('rsi_14', 0),
                 'ma_200': metrics.get('ma_200'),
                 'return_7d': metrics.get('return_7d', 0),
-                'conditions': metrics.get('conditions', {}),
+                'return_30d': metrics.get('return_30d', 0),
+                'conditions': metrics.get('conditions', metrics.get('basic_conditions', {})),
                 'analyzed_at': datetime.now().isoformat()
             }
+
+            # 高度な分析結果を追加
+            if advanced:
+                result['signal_strength'] = metrics.get('signal_strength', 'none')
+                result['basic_conditions'] = metrics.get('basic_conditions', {})
+                result['advanced_conditions'] = metrics.get('advanced_conditions', {})
+                result['basic_score'] = metrics.get('basic_score', '0/5')
+                result['advanced_score'] = metrics.get('advanced_score', '0/7')
+
+                # スコア情報
+                deep_score = metrics.get('deep_score', {})
+                if deep_score:
+                    result['total_score'] = deep_score.get('total_score', 0)
+                    result['value_score'] = deep_score.get('value_score', 0)
+                    result['technical_score'] = deep_score.get('technical_score', 0)
+                    result['momentum_score'] = deep_score.get('momentum_score', 0)
+                    result['risk_score'] = deep_score.get('risk_score', 0)
+
+                # テクニカル指標
+                result['divergence'] = metrics.get('divergence')
+                result['support'] = metrics.get('support')
+                result['consolidation'] = metrics.get('consolidation')
+                result['higher_lows'] = metrics.get('higher_lows')
+                result['bollinger'] = metrics.get('bollinger')
+                result['stochastic'] = metrics.get('stochastic')
+                result['macd'] = metrics.get('macd')
+
+            return result
     except Exception as e:
         return {
             'symbol': symbol,
@@ -257,6 +290,14 @@ def analyze_single_symbol(state_machine: StateMachine, symbol: str) -> Optional[
             'detected': False
         }
     return None
+
+
+def get_recommendation(state_machine: StateMachine, symbol: str) -> Optional[Dict]:
+    """投資推奨を取得"""
+    try:
+        return state_machine.get_bottom_recommendation(symbol)
+    except Exception:
+        return None
 
 
 def render_deep_bottom_page(symbols: List[str]):
@@ -320,6 +361,25 @@ def render_deep_bottom_page(symbols: List[str]):
         st.session_state.deep_bottom_scanning = False
     if 'deep_bottom_detected_live' not in st.session_state:
         st.session_state.deep_bottom_detected_live = []
+    if 'advanced_mode' not in st.session_state:
+        st.session_state.advanced_mode = False
+
+    # 高度な分析モード切替
+    st.markdown("### ⚙️ 分析設定")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        advanced_mode = st.toggle(
+            "🔬 高度な分析モード",
+            value=st.session_state.advanced_mode,
+            key="advanced_toggle",
+            help="RSIダイバージェンス、サポートレベル、MACD等の高度な指標を使用"
+        )
+        st.session_state.advanced_mode = advanced_mode
+    with col2:
+        if advanced_mode:
+            st.info("🔬 高度な分析: スコアリング + 7つの追加指標を使用")
+        else:
+            st.info("📊 基本分析: 5つの条件でシンプルに判定")
 
     # 分析実行セクション
     st.subheader("🔍 銘柄スキャン")
@@ -1248,6 +1308,7 @@ def run_scan(symbols: List[str]):
     """シンプルなスキャン実行"""
     state_machine = StateMachine()
     results = []
+    advanced = st.session_state.get('advanced_mode', False)
 
     progress_bar = st.progress(0)
     status = st.empty()
@@ -1257,17 +1318,20 @@ def run_scan(symbols: List[str]):
 
     for idx, symbol in enumerate(symbols):
         progress_bar.progress((idx + 1) / len(symbols))
-        status.text(f"分析中: {symbol} ({idx + 1}/{len(symbols)})")
+        mode_text = "🔬" if advanced else "📊"
+        status.text(f"{mode_text} 分析中: {symbol} ({idx + 1}/{len(symbols)})")
 
-        result = analyze_single_symbol(state_machine, symbol)
+        result = analyze_single_symbol(state_machine, symbol, advanced=advanced)
         if result:
             results.append(result)
             st.session_state.deep_bottom_scanned.add(symbol)
 
             if result.get('detected'):
                 detected_symbols.append(result)
+                strength = result.get('signal_strength', '')
+                strength_emoji = {'strong': '🔥', 'moderate': '✨', 'weak': '📍'}.get(strength, '')
                 detected_container.success(
-                    f"💎 検出: {symbol} (ATH下落率: {result['drawdown_pct']:.1f}%)"
+                    f"💎{strength_emoji} 検出: {symbol} (ATH下落率: {result['drawdown_pct']:.1f}%)"
                 )
 
     progress_bar.empty()
@@ -1287,6 +1351,7 @@ def run_batch_scan(symbols: List[str], show_live: bool = True):
     """バッチスキャン実行"""
     state_machine = StateMachine()
     results = []
+    advanced = st.session_state.get('advanced_mode', False)
 
     progress_bar = st.progress(0)
     status = st.empty()
@@ -1299,14 +1364,15 @@ def run_batch_scan(symbols: List[str], show_live: bool = True):
         progress_bar.progress((idx + 1) / len(symbols))
 
         elapsed = time.time() - start_time
+        mode_text = "🔬" if advanced else "📊"
         if idx > 0:
             avg_time = elapsed / idx
             remaining = avg_time * (len(symbols) - idx)
-            status.text(f"分析中: {symbol} ({idx + 1}/{len(symbols)}) - 残り約{remaining:.0f}秒")
+            status.text(f"{mode_text} 分析中: {symbol} ({idx + 1}/{len(symbols)}) - 残り約{remaining:.0f}秒")
         else:
-            status.text(f"分析中: {symbol} ({idx + 1}/{len(symbols)})")
+            status.text(f"{mode_text} 分析中: {symbol} ({idx + 1}/{len(symbols)})")
 
-        result = analyze_single_symbol(state_machine, symbol)
+        result = analyze_single_symbol(state_machine, symbol, advanced=advanced)
         if result:
             results.append(result)
             st.session_state.deep_bottom_scanned.add(symbol)
@@ -1314,8 +1380,10 @@ def run_batch_scan(symbols: List[str], show_live: bool = True):
             if result.get('detected'):
                 detected_in_batch.append(result)
                 if live_display:
+                    strength = result.get('signal_strength', '')
+                    strength_text = f" [{strength}]" if strength else ""
                     live_display.success(
-                        f"💎 **{symbol}** 検出! "
+                        f"💎 **{symbol}**{strength_text} 検出! "
                         f"ATH下落率: {result['drawdown_pct']:.1f}%, "
                         f"RSI: {result['rsi_14']:.1f}"
                     )
@@ -1348,6 +1416,7 @@ def run_auto_scan(symbols: List[str], batch_size: int):
         return
 
     state_machine = StateMachine()
+    advanced = st.session_state.get('advanced_mode', False)
     total_batches = (len(unscanned) + batch_size - 1) // batch_size
 
     # 全体進捗
@@ -1358,13 +1427,14 @@ def run_auto_scan(symbols: List[str], batch_size: int):
 
     all_detected = []
     start_time = time.time()
+    mode_text = "🔬" if advanced else "📊"
 
     for batch_idx in range(total_batches):
         batch_start = batch_idx * batch_size
         batch_end = min(batch_start + batch_size, len(unscanned))
         batch = unscanned[batch_start:batch_end]
 
-        batch_status.markdown(f"**バッチ {batch_idx + 1}/{total_batches}** ({len(batch)}銘柄)")
+        batch_status.markdown(f"**{mode_text} バッチ {batch_idx + 1}/{total_batches}** ({len(batch)}銘柄)")
 
         for idx, symbol in enumerate(batch):
             overall_done = batch_start + idx + 1
@@ -1376,13 +1446,13 @@ def run_auto_scan(symbols: List[str], batch_size: int):
                 remaining = avg_time * (len(unscanned) - overall_done)
                 mins, secs = divmod(int(remaining), 60)
                 current_status.text(
-                    f"分析中: {symbol} ({overall_done}/{len(unscanned)}) - "
+                    f"{mode_text} 分析中: {symbol} ({overall_done}/{len(unscanned)}) - "
                     f"残り約{mins}分{secs}秒"
                 )
             else:
-                current_status.text(f"分析中: {symbol} ({overall_done}/{len(unscanned)})")
+                current_status.text(f"{mode_text} 分析中: {symbol} ({overall_done}/{len(unscanned)})")
 
-            result = analyze_single_symbol(state_machine, symbol)
+            result = analyze_single_symbol(state_machine, symbol, advanced=advanced)
             if result:
                 st.session_state.deep_bottom_scanned.add(symbol)
 
@@ -1434,36 +1504,93 @@ def display_deep_bottom_results(results: List[Dict]):
     # シグナル検出された銘柄
     detected = [r for r in valid_results if r.get('detected')]
 
-    # サマリーメトリクス
-    col1, col2, col3, col4 = st.columns(4)
+    # 高度な分析モードかどうか判定
+    advanced_mode = any(r.get('signal_strength') for r in valid_results)
 
-    with col1:
-        st.metric("分析銘柄数", len(valid_results))
-    with col2:
-        st.metric("シグナル検出", len(detected), delta=None)
-    with col3:
-        avg_drawdown = sum(r.get('drawdown_pct', 0) for r in valid_results) / len(valid_results) if valid_results else 0
-        st.metric("平均ATH下落率", f"{avg_drawdown:.1f}%")
-    with col4:
-        rsi_values = [r.get('rsi_14', 0) for r in valid_results if r.get('rsi_14')]
-        avg_rsi = sum(rsi_values) / len(rsi_values) if rsi_values else 0
-        st.metric("平均RSI", f"{avg_rsi:.1f}")
+    # サマリーメトリクス
+    if advanced_mode:
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("分析銘柄数", len(valid_results))
+        with col2:
+            strong = len([r for r in detected if r.get('signal_strength') == 'strong'])
+            moderate = len([r for r in detected if r.get('signal_strength') == 'moderate'])
+            st.metric("シグナル検出", f"{len(detected)} (🔥{strong} ✨{moderate})")
+        with col3:
+            avg_drawdown = sum(r.get('drawdown_pct', 0) for r in valid_results) / len(valid_results) if valid_results else 0
+            st.metric("平均ATH下落率", f"{avg_drawdown:.1f}%")
+        with col4:
+            scores = [r.get('total_score', 0) for r in valid_results if r.get('total_score')]
+            avg_score = sum(scores) / len(scores) if scores else 0
+            st.metric("平均スコア", f"{avg_score:.0f}/100")
+        with col5:
+            rsi_values = [r.get('rsi_14', 0) for r in valid_results if r.get('rsi_14')]
+            avg_rsi = sum(rsi_values) / len(rsi_values) if rsi_values else 0
+            st.metric("平均RSI", f"{avg_rsi:.1f}")
+    else:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("分析銘柄数", len(valid_results))
+        with col2:
+            st.metric("シグナル検出", len(detected), delta=None)
+        with col3:
+            avg_drawdown = sum(r.get('drawdown_pct', 0) for r in valid_results) / len(valid_results) if valid_results else 0
+            st.metric("平均ATH下落率", f"{avg_drawdown:.1f}%")
+        with col4:
+            rsi_values = [r.get('rsi_14', 0) for r in valid_results if r.get('rsi_14')]
+            avg_rsi = sum(rsi_values) / len(rsi_values) if rsi_values else 0
+            st.metric("平均RSI", f"{avg_rsi:.1f}")
 
     st.markdown("---")
 
     # シグナル検出銘柄
     if detected:
+        # シグナル強度でソート（strong > moderate > weak）
+        strength_order = {'strong': 0, 'moderate': 1, 'weak': 2, '': 3}
+        detected_sorted = sorted(detected, key=lambda x: strength_order.get(x.get('signal_strength', ''), 3))
+
         st.success(f"💎 **{len(detected)}件のDeep Bottomシグナルを検出しました！**")
 
-        for item in detected:
+        for item in detected_sorted:
             with st.container():
+                # シグナル強度に応じた表示
+                signal_strength = item.get('signal_strength', '')
+                if signal_strength == 'strong':
+                    strength_badge = "🔥 強シグナル"
+                    border_color = "#ff4444"
+                    bg_gradient = "linear-gradient(135deg, #4a1a1a 0%, #5a2d2d 100%)"
+                elif signal_strength == 'moderate':
+                    strength_badge = "✨ 中シグナル"
+                    border_color = "#ffaa00"
+                    bg_gradient = "linear-gradient(135deg, #4a3a1a 0%, #5a4d2d 100%)"
+                else:
+                    strength_badge = ""
+                    border_color = "#00ff88"
+                    bg_gradient = "linear-gradient(135deg, #1a472a 0%, #2d5a3d 100%)"
+
                 st.markdown(f"""
-                <div style="background: linear-gradient(135deg, #1a472a 0%, #2d5a3d 100%);
+                <div style="background: {bg_gradient};
                             padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem;
-                            border-left: 5px solid #00ff88;">
-                    <h3 style="color: #00ff88; margin: 0;">💎 {item['symbol']}</h3>
+                            border-left: 5px solid {border_color};">
+                    <h3 style="color: {border_color}; margin: 0;">💎 {item['symbol']} {strength_badge}</h3>
                 </div>
                 """, unsafe_allow_html=True)
+
+                # スコア表示（高度分析モードの場合）
+                if item.get('total_score') is not None:
+                    score_col1, score_col2, score_col3, score_col4, score_col5 = st.columns(5)
+                    with score_col1:
+                        total = item.get('total_score', 0)
+                        color = "🟢" if total >= 70 else "🟡" if total >= 50 else "🔴"
+                        st.metric("総合スコア", f"{color} {total:.0f}/100")
+                    with score_col2:
+                        st.metric("バリュー", f"{item.get('value_score', 0):.0f}/25")
+                    with score_col3:
+                        st.metric("テクニカル", f"{item.get('technical_score', 0):.0f}/25")
+                    with score_col4:
+                        st.metric("モメンタム", f"{item.get('momentum_score', 0):.0f}/25")
+                    with score_col5:
+                        st.metric("リスク", f"{item.get('risk_score', 0):.0f}/25")
 
                 col1, col2, col3, col4 = st.columns(4)
 
@@ -1496,10 +1623,10 @@ def display_deep_bottom_results(results: List[Dict]):
                         delta=None
                     )
 
-                # 条件チェック詳細
-                conditions = item.get('conditions', {})
+                # 条件チェック詳細（基本条件）
+                conditions = item.get('conditions', item.get('basic_conditions', {}))
                 if conditions:
-                    st.markdown("**条件達成状況:**")
+                    st.markdown("**📋 基本条件達成状況:**")
                     cond_cols = st.columns(5)
                     cond_labels = {
                         'ath_drawdown': 'ATH下落率',
@@ -1515,6 +1642,75 @@ def display_deep_bottom_results(results: List[Dict]):
                             else:
                                 st.markdown(f"❌ {label}")
 
+                # 高度な条件（高度分析モードの場合）
+                advanced_conds = item.get('advanced_conditions', {})
+                if advanced_conds:
+                    st.markdown("**🔬 高度指標:**")
+                    adv_cols = st.columns(4)
+
+                    adv_labels = [
+                        ('bullish_divergence', 'RSIダイバージェンス'),
+                        ('at_support', 'サポート接近'),
+                        ('consolidating', 'レンジ形成'),
+                        ('higher_lows_forming', '安値切り上げ'),
+                        ('below_bollinger', 'ボリンジャー下限'),
+                        ('stoch_oversold', 'ストキャス売られすぎ'),
+                        ('macd_bullish', 'MACD反転')
+                    ]
+
+                    for idx, (key, label) in enumerate(adv_labels):
+                        with adv_cols[idx % 4]:
+                            if advanced_conds.get(key):
+                                st.markdown(f"✅ {label}")
+                            else:
+                                st.markdown(f"⬜ {label}")
+
+                # 追加テクニカル詳細（展開可能）
+                if item.get('divergence') or item.get('support') or item.get('macd'):
+                    with st.expander("📈 テクニカル詳細"):
+                        tech_col1, tech_col2, tech_col3 = st.columns(3)
+
+                        with tech_col1:
+                            if item.get('divergence'):
+                                div = item['divergence']
+                                st.markdown("**RSIダイバージェンス**")
+                                st.write(f"強気ダイバージェンス: {'あり' if div.get('bullish_divergence') else 'なし'}")
+
+                            if item.get('bollinger'):
+                                bb = item['bollinger']
+                                st.markdown("**ボリンジャーバンド**")
+                                st.write(f"位置: {bb.get('position', 'N/A')}")
+                                st.write(f"下限以下: {'Yes' if bb.get('below_lower') else 'No'}")
+
+                        with tech_col2:
+                            if item.get('support'):
+                                sup = item['support']
+                                st.markdown("**サポートレベル**")
+                                if sup.get('support_price'):
+                                    st.write(f"サポート価格: ${sup['support_price']:,.2f}")
+                                st.write(f"反発回数: {sup.get('touches', 0)}回")
+
+                            if item.get('stochastic'):
+                                stoch = item['stochastic']
+                                st.markdown("**ストキャスティクス**")
+                                st.write(f"%K: {stoch.get('k', 0):.1f}")
+                                st.write(f"%D: {stoch.get('d', 0):.1f}")
+
+                        with tech_col3:
+                            if item.get('macd'):
+                                macd = item['macd']
+                                st.markdown("**MACD**")
+                                st.write(f"MACD: {macd.get('macd', 0):.4f}")
+                                st.write(f"シグナル: {macd.get('signal', 0):.4f}")
+                                st.write(f"ヒストグラム上昇: {'Yes' if macd.get('histogram_rising') else 'No'}")
+
+                            if item.get('consolidation'):
+                                cons = item['consolidation']
+                                st.markdown("**コンソリデーション**")
+                                st.write(f"レンジ形成: {'Yes' if cons.get('is_consolidating') else 'No'}")
+                                if cons.get('range_pct'):
+                                    st.write(f"レンジ幅: {cons['range_pct']:.1f}%")
+
                 st.markdown("---")
     else:
         st.info("現在、Deep Bottomシグナルを満たす銘柄はありません。")
@@ -1523,16 +1719,25 @@ def display_deep_bottom_results(results: List[Dict]):
     st.subheader("📋 全銘柄の詳細データ")
 
     # フィルタ
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         show_only_detected = st.checkbox("シグナル検出のみ表示", value=False)
     with col2:
         min_conditions = st.slider("最低条件達成数", 0, 5, 0)
+    with col3:
+        if advanced_mode:
+            min_score = st.slider("最低スコア", 0, 100, 0)
+        else:
+            min_score = 0
 
     # ソートオプション
+    sort_options = ["条件達成数（多い順）", "ATH下落率（高い順）", "RSI（低い順）", "52週安値からの距離（近い順）", "シグナル検出順"]
+    if advanced_mode:
+        sort_options.insert(0, "総合スコア（高い順）")
+        sort_options.insert(1, "シグナル強度順")
     sort_by = st.selectbox(
         "並び替え",
-        ["条件達成数（多い順）", "ATH下落率（高い順）", "RSI（低い順）", "52週安値からの距離（近い順）", "シグナル検出順"],
+        sort_options,
         key="sort_results"
     )
 
@@ -1543,14 +1748,28 @@ def display_deep_bottom_results(results: List[Dict]):
     if min_conditions > 0:
         filtered_results = [
             r for r in filtered_results
-            if sum(1 for v in r.get('conditions', {}).values() if v) >= min_conditions
+            if sum(1 for v in r.get('conditions', r.get('basic_conditions', {})).values() if v) >= min_conditions
+        ]
+    if min_score > 0:
+        filtered_results = [
+            r for r in filtered_results
+            if r.get('total_score', 0) >= min_score
         ]
 
     # ソート
-    if sort_by == "条件達成数（多い順）":
+    strength_order = {'strong': 0, 'moderate': 1, 'weak': 2, '': 3, None: 4}
+
+    if sort_by == "総合スコア（高い順）":
+        sorted_results = sorted(filtered_results, key=lambda x: x.get('total_score', 0), reverse=True)
+    elif sort_by == "シグナル強度順":
         sorted_results = sorted(
             filtered_results,
-            key=lambda x: sum(1 for v in x.get('conditions', {}).values() if v),
+            key=lambda x: (strength_order.get(x.get('signal_strength'), 4), -x.get('total_score', 0))
+        )
+    elif sort_by == "条件達成数（多い順）":
+        sorted_results = sorted(
+            filtered_results,
+            key=lambda x: sum(1 for v in x.get('conditions', x.get('basic_conditions', {})).values() if v),
             reverse=True
         )
     elif sort_by == "ATH下落率（高い順）":
@@ -1566,19 +1785,39 @@ def display_deep_bottom_results(results: List[Dict]):
 
     # データフレーム作成
     if sorted_results:
-        df = pd.DataFrame([
-            {
-                'シンボル': r['symbol'],
-                'シグナル': '💎' if r.get('detected') else '',
-                '条件達成': f"{sum(1 for v in r.get('conditions', {}).values() if v)}/5",
-                '現在価格': f"${r.get('current_price', 0):,.2f}",
-                'ATH下落率': f"{r.get('drawdown_pct', 0):.1f}%",
-                'RSI(14)': f"{r.get('rsi_14', 0):.1f}" if r.get('rsi_14') else 'N/A',
-                '52週安値距離': f"{r.get('week52_low_proximity', 0)*100:.1f}%",
-                '7日リターン': f"{r.get('return_7d', 0):+.1f}%"
-            }
-            for r in sorted_results
-        ])
+        if advanced_mode:
+            # 高度分析モード用のテーブル
+            df = pd.DataFrame([
+                {
+                    'シンボル': r['symbol'],
+                    'シグナル': '🔥' if r.get('signal_strength') == 'strong' else ('✨' if r.get('signal_strength') == 'moderate' else ('📍' if r.get('signal_strength') == 'weak' else '')),
+                    '強度': r.get('signal_strength', '-'),
+                    'スコア': f"{r.get('total_score', 0):.0f}" if r.get('total_score') else '-',
+                    '条件': f"{sum(1 for v in r.get('basic_conditions', r.get('conditions', {})).values() if v)}/5",
+                    '高度条件': f"{sum(1 for v in r.get('advanced_conditions', {}).values() if v)}/7",
+                    '価格': f"${r.get('current_price', 0):,.2f}",
+                    'ATH下落': f"{r.get('drawdown_pct', 0):.1f}%",
+                    'RSI': f"{r.get('rsi_14', 0):.1f}" if r.get('rsi_14') else '-',
+                    '52週安値': f"{r.get('week52_low_proximity', 0)*100:.1f}%",
+                    '7日': f"{r.get('return_7d', 0):+.1f}%"
+                }
+                for r in sorted_results
+            ])
+        else:
+            # 基本分析モード用のテーブル
+            df = pd.DataFrame([
+                {
+                    'シンボル': r['symbol'],
+                    'シグナル': '💎' if r.get('detected') else '',
+                    '条件達成': f"{sum(1 for v in r.get('conditions', r.get('basic_conditions', {})).values() if v)}/5",
+                    '現在価格': f"${r.get('current_price', 0):,.2f}",
+                    'ATH下落率': f"{r.get('drawdown_pct', 0):.1f}%",
+                    'RSI(14)': f"{r.get('rsi_14', 0):.1f}" if r.get('rsi_14') else 'N/A',
+                    '52週安値距離': f"{r.get('week52_low_proximity', 0)*100:.1f}%",
+                    '7日リターン': f"{r.get('return_7d', 0):+.1f}%"
+                }
+                for r in sorted_results
+            ])
 
         st.dataframe(df, use_container_width=True, height=400)
 
