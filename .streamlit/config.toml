@@ -1,8 +1,10 @@
 [server]
 # Streamlit Cloud manages ports automatically, don't set port here
 headless = true
-enableCORS = false
-enableXsrfProtection = true
+# enableCORS and enableXsrfProtection must be compatible
+# For cloud deployment, let Streamlit manage these settings
+# enableCORS = false
+# enableXsrfProtection = true
 
 [browser]
 gatherUsageStats = false
