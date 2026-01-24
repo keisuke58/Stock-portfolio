@@ -34,6 +34,8 @@ from streamlit_components.symbol_detail import render_symbol_detail
 from streamlit_components.comparison_view import render_comparison_view
 from streamlit_components.portfolio_tracker import render_portfolio_page
 from streamlit_components.alert_manager import render_alerts_page
+from streamlit_components.explanation_page import render_explanation_page
+from streamlit_components.backtest_page import render_backtest_page
 
 # ページ設定
 st.set_page_config(
