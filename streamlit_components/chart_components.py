@@ -52,7 +52,8 @@ def create_price_chart(
     
     # データをDataFrameに変換
     df = pd.DataFrame(prices, columns=['date', 'price'])
-    df['date'] = pd.to_datetime(df['date'])
+    # タイムゾーン対応: utc=Trueで変換後、タイムゾーンを除去
+    df['date'] = pd.to_datetime(df['date'], utc=True).dt.tz_localize(None)
     df = df.sort_values('date')
     
     # 期間でフィルタリング
