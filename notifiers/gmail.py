@@ -2,16 +2,29 @@
 Gmail通知モジュール
 状態変化 or Daily pick をメールで通知
 """
+import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional
 from datetime import datetime
 
+from core.retry import retry_with_backoff
+from core.circuit_breaker import CircuitBreaker, CircuitOpenError
+
+logger = logging.getLogger(__name__)
+
+# Gmail circuit breaker
+_gmail_circuit = CircuitBreaker(
+    failure_threshold=3,
+    recovery_timeout=60.0,  # Longer recovery for SMTP
+    name="gmail"
+)
+
 
 class GmailNotifier:
     """Gmail SMTPに通知を送信するクラス"""
-    
+
     def __init__(self, smtp_user: str, smtp_password: str, to_email: str):
         """
         Args:
@@ -24,31 +37,45 @@ class GmailNotifier:
         self.to_email = to_email
         self.smtp_server = 'smtp.gmail.com'
         self.smtp_port = 587
-    
+
     def send(self, subject: str, message: str) -> bool:
-        """メールを送信"""
+        """メールを送信（リトライ・サーキットブレーカー対応）"""
         try:
-            # メール作成
-            msg = MIMEMultipart()
-            msg['From'] = self.smtp_user
-            msg['To'] = self.to_email
-            msg['Subject'] = subject
-            
-            # 本文を追加（HTML形式で送信）
-            msg.attach(MIMEText(message, 'html', 'utf-8'))
-            
-            # SMTPサーバーに接続して送信
-            server = smtplib.SMTP(self.smtp_server, self.smtp_port)
+            return _gmail_circuit.call(self._send_with_retry, subject, message)
+        except CircuitOpenError as e:
+            logger.warning(f"Gmail circuit open, skipping notification: {e}")
+            return False
+        except (smtplib.SMTPException, OSError) as e:
+            logger.error(f"Gmail notification failed after retries: {e}")
+            return False
+
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=2.0,
+        max_delay=60.0,
+        exceptions=(smtplib.SMTPException, OSError)
+    )
+    def _send_with_retry(self, subject: str, message: str) -> bool:
+        """リトライ付きメール送信"""
+        # メール作成
+        msg = MIMEMultipart()
+        msg['From'] = self.smtp_user
+        msg['To'] = self.to_email
+        msg['Subject'] = subject
+
+        # 本文を追加（HTML形式で送信）
+        msg.attach(MIMEText(message, 'html', 'utf-8'))
+
+        # SMTPサーバーに接続して送信
+        server = smtplib.SMTP(self.smtp_server, self.smtp_port)
+        try:
             server.starttls()
             server.login(self.smtp_user, self.smtp_password)
             server.send_message(msg)
-            server.quit()
-            
-            print(f"✓ Gmail通知送信成功: {subject}")
+            logger.info(f"Gmail notification sent: {subject}")
             return True
-        except Exception as e:
-            print(f"✗ Gmail通知エラー: {e}")
-            return False
+        finally:
+            server.quit()
     
     def format_state_change_message(
         self,

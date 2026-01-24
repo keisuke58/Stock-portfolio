@@ -2,9 +2,22 @@
 Slack通知モジュール
 状態変化 or Daily pick を通知
 """
+import logging
 import requests
 from typing import Optional
 from datetime import datetime
+
+from core.retry import retry_with_backoff
+from core.circuit_breaker import CircuitBreaker, CircuitOpenError
+
+logger = logging.getLogger(__name__)
+
+# Slack circuit breaker (similar to Discord)
+_slack_circuit = CircuitBreaker(
+    failure_threshold=3,
+    recovery_timeout=30.0,
+    name="slack"
+)
 
 
 class SlackNotifier:
@@ -14,20 +27,35 @@ class SlackNotifier:
         self.webhook_url = webhook_url
     
     def send(self, message: str) -> bool:
-        """メッセージを送信"""
+        """メッセージを送信（リトライ・サーキットブレーカー対応）"""
+        try:
+            return _slack_circuit.call(self._send_with_retry, message)
+        except CircuitOpenError as e:
+            logger.warning(f"Slack circuit open, skipping notification: {e}")
+            return False
+        except requests.RequestException as e:
+            logger.error(f"Slack notification failed after retries: {e}")
+            return False
+
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=1.0,
+        max_delay=30.0,
+        exceptions=(requests.RequestException,)
+    )
+    def _send_with_retry(self, message: str) -> bool:
+        """リトライ付きメッセージ送信"""
         headers = {'Content-Type': 'application/json'}
         # Slackのメッセージ形式に変換（Markdown記法をSlack形式に）
         slack_message = message.replace('**', '*').replace('`', '`')
         data = {'text': slack_message}
-        
-        try:
-            response = requests.post(self.webhook_url, headers=headers, json=data, timeout=10)
-            response.raise_for_status()
-            print(f"✓ Slack通知送信成功: {message[:50]}...")
-            return True
-        except Exception as e:
-            print(f"✗ Slack通知エラー: {e}")
-            return False
+
+        response = requests.post(self.webhook_url, headers=headers, json=data, timeout=10)
+        response.raise_for_status()
+
+        preview = message[:50].encode('ascii', errors='ignore').decode('ascii')
+        logger.info(f"Slack notification sent: {preview}...")
+        return True
     
     def format_state_change_message(
         self,

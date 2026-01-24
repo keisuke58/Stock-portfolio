@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(ls:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd production-grade resilience patterns and structured logging\n\n- Add retry with exponential backoff to all notifiers \\(Discord, Slack, Line, Gmail\\)\n- Add circuit breaker pattern to prevent cascading failures on external API calls\n- Replace print\\(\\) statements with structured logging in main.py and notifiers\n- Create comprehensive core module with:\n  - constants.py: Centralized configuration values\n  - protocols.py: Interface definitions for dependency injection\n  - models.py: Type-safe dataclasses \\(AssetState, VMSScores, AnalysisResult\\)\n  - logging_config.py: JSON/colored formatters with rotation\n  - retry.py: Exponential backoff utilities with jitter\n  - circuit_breaker.py: CLOSED/OPEN/HALF_OPEN state machine\n  - container.py: Lightweight dependency injection container\n- Add base classes for fetchers and notifiers to reduce duplication\n- Fix bare except clauses with specific exception types\n- Add thread safety to StateStore with RLock and context managers\n- Convert signals.py to backward compatibility shim\n- Add pytest infrastructure with fixtures and CI/CD workflow\n- Add pyproject.toml with mypy, ruff, and coverage configs\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }

@@ -2,34 +2,62 @@
 Line通知モジュール
 状態変化 or Daily pick を通知
 """
+import logging
 import requests
 from typing import Optional
 from datetime import datetime
 
+from core.retry import retry_with_backoff
+from core.circuit_breaker import CircuitBreaker, CircuitOpenError
+
+logger = logging.getLogger(__name__)
+
+# Line circuit breaker
+_line_circuit = CircuitBreaker(
+    failure_threshold=3,
+    recovery_timeout=30.0,
+    name="line"
+)
+
 
 class LineNotifier:
     """Line Notify APIに通知を送信するクラス"""
-    
+
     def __init__(self, access_token: str):
         self.access_token = access_token
         self.api_url = 'https://notify-api.line.me/api/notify'
-    
+
     def send(self, message: str) -> bool:
-        """メッセージを送信"""
+        """メッセージを送信（リトライ・サーキットブレーカー対応）"""
+        try:
+            return _line_circuit.call(self._send_with_retry, message)
+        except CircuitOpenError as e:
+            logger.warning(f"Line circuit open, skipping notification: {e}")
+            return False
+        except requests.RequestException as e:
+            logger.error(f"Line notification failed after retries: {e}")
+            return False
+
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=1.0,
+        max_delay=30.0,
+        exceptions=(requests.RequestException,)
+    )
+    def _send_with_retry(self, message: str) -> bool:
+        """リトライ付きメッセージ送信"""
         headers = {
             'Authorization': f'Bearer {self.access_token}',
             'Content-Type': 'application/x-www-form-urlencoded'
         }
         data = {'message': message}
-        
-        try:
-            response = requests.post(self.api_url, headers=headers, data=data, timeout=10)
-            response.raise_for_status()
-            print(f"✓ Line通知送信成功: {message[:50]}...")
-            return True
-        except Exception as e:
-            print(f"✗ Line通知エラー: {e}")
-            return False
+
+        response = requests.post(self.api_url, headers=headers, data=data, timeout=10)
+        response.raise_for_status()
+
+        preview = message[:50].encode('ascii', errors='ignore').decode('ascii')
+        logger.info(f"Line notification sent: {preview}...")
+        return True
     
     def format_state_change_message(
         self,

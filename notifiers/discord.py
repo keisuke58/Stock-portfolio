@@ -3,6 +3,7 @@ Discord通知モジュール
 状態変化 or Daily pick を通知
 スコア閾値・異常検知・レジーム変化通知対応
 """
+import logging
 import requests
 from typing import Optional, Dict, List
 from datetime import datetime, timedelta
@@ -11,6 +12,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from optimization.weight_optimizer import MarketRegime, WeightOptimizer
+from core.retry import retry_with_backoff
+from core.circuit_breaker import get_discord_circuit, CircuitOpenError
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationThrottler:
@@ -81,20 +86,36 @@ class DiscordNotifier:
         self.throttler = NotificationThrottler(cooldown_hours=cooldown_hours)
     
     def send(self, message: str) -> bool:
-        """メッセージを送信"""
+        """メッセージを送信（リトライ・サーキットブレーカー対応）"""
+        circuit = get_discord_circuit()
+
+        try:
+            return circuit.call(self._send_with_retry, message)
+        except CircuitOpenError as e:
+            logger.warning(f"Discord circuit open, skipping notification: {e}")
+            return False
+        except requests.RequestException as e:
+            logger.error(f"Discord notification failed after retries: {e}")
+            return False
+
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=1.0,
+        max_delay=30.0,
+        exceptions=(requests.RequestException,)
+    )
+    def _send_with_retry(self, message: str) -> bool:
+        """リトライ付きメッセージ送信"""
         headers = {'Content-Type': 'application/json'}
         data = {'content': message}
-        
-        try:
-            response = requests.post(self.webhook_url, headers=headers, json=data, timeout=10)
-            response.raise_for_status()
-            # エンコーディングエラー回避のため、ASCII文字のみでログ出力
-            preview = message[:50].encode('ascii', errors='ignore').decode('ascii')
-            print(f"OK Discord通知送信成功: {preview}...")
-            return True
-        except Exception as e:
-            print(f"NG Discord通知エラー: {e}")
-            return False
+
+        response = requests.post(self.webhook_url, headers=headers, json=data, timeout=10)
+        response.raise_for_status()
+
+        # エンコーディングエラー回避のため、ASCII文字のみでログ出力
+        preview = message[:50].encode('ascii', errors='ignore').decode('ascii')
+        logger.info(f"Discord notification sent: {preview}...")
+        return True
     
     def format_state_change_message(
         self,
