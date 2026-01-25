@@ -349,3 +349,58 @@ DEEP_BOTTOM_THRESHOLDS = DeepBottomThresholds()
 DEEP_BOTTOM_BACKTEST_CONFIG = DeepBottomBacktestConfig()
 FUNDAMENTAL_SCORING_CONFIG = FundamentalScoringConfig()
 DEEP_BOTTOM_SCORING_V2_CONFIG = DeepBottomScoringV2Config()
+
+
+@dataclass(frozen=True)
+class PatternDetectionConfig:
+    """
+    Configuration for pattern detection algorithms.
+    """
+    # Gap detection
+    GAP_MIN_PCT: float = 2.0  # Minimum gap size to detect
+
+    # Double top/bottom
+    DOUBLE_TOP_TOLERANCE_PCT: float = 3.0  # Tolerance for peak alignment
+
+    # Wedge patterns
+    WEDGE_MIN_TOUCHES: int = 4  # Minimum trendline touches
+
+    # Trendline breaks
+    TRENDLINE_BREAK_THRESHOLD_PCT: float = 2.0  # Break confirmation threshold
+
+    # General
+    MIN_PATTERN_CONFIDENCE: float = 0.6  # Minimum confidence to report pattern
+    LOOKBACK_DAYS: int = 60  # Default lookback period
+
+
+@dataclass(frozen=True)
+class RiskManagementConfig:
+    """
+    Configuration for portfolio and risk management.
+    """
+    # Position sizing
+    DEFAULT_RISK_PER_TRADE: float = 0.02  # 2% risk per trade
+    MAX_POSITION_SIZE: float = 0.10  # 10% max position
+    KELLY_FRACTION: float = 0.5  # Half-Kelly for safety
+
+    # Stop-loss
+    TRAILING_STOP_PCT: float = 0.10  # 10% trailing stop
+    ATR_STOP_MULTIPLIER: float = 2.0  # 2x ATR for volatility stop
+
+    # Time-based exits
+    MAX_HOLDING_DAYS: int = 90  # Maximum holding period
+
+    # Risk metrics
+    VAR_CONFIDENCE_LEVEL: float = 0.95  # 95% VaR
+    RISK_FREE_RATE: float = 0.05  # 5% annual risk-free rate
+
+    # Correlation
+    MAX_CORRELATION: float = 0.7  # Threshold for high correlation warning
+
+    # Sector rotation
+    SECTOR_REBALANCE_THRESHOLD: float = 0.05  # 5% change triggers rebalance
+    MAX_SECTORS: int = 5  # Maximum sectors to hold
+
+
+PATTERN_DETECTION_CONFIG = PatternDetectionConfig()
+RISK_MANAGEMENT_CONFIG = RiskManagementConfig()

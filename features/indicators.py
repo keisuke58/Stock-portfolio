@@ -1401,3 +1401,552 @@ class FeatureCalculator:
             'raw_score': raw_score,
             'volume_confirmed': volume_score >= 8
         }
+
+    # ============================================
+    # Advanced Technical Indicators
+    # ============================================
+
+    @staticmethod
+    def calculate_atr(
+        prices: List[Tuple[datetime, float]],
+        high_prices: List[float] = None,
+        low_prices: List[float] = None,
+        period: int = 14
+    ) -> Optional[dict]:
+        """
+        Average True Range (ATR) for volatility measurement and stop-loss calculation.
+
+        Args:
+            prices: List of (datetime, close_price)
+            high_prices: Optional list of high prices (if None, estimates from close)
+            low_prices: Optional list of low prices (if None, estimates from close)
+            period: ATR period (default 14)
+
+        Returns:
+            {
+                'atr': float,              # ATR value
+                'atr_pct': float,          # ATR as percentage of price
+                'suggested_stop': float,   # Suggested stop-loss (2x ATR below)
+                'volatility_level': str    # 'low', 'medium', 'high', 'extreme'
+            }
+        """
+        if len(prices) < period + 1:
+            return None
+
+        close_prices = [p[1] for p in prices]
+
+        # If high/low not provided, estimate from close prices
+        if high_prices is None or low_prices is None:
+            # Estimate high/low as ±1% of close (rough approximation)
+            high_prices = [p * 1.01 for p in close_prices]
+            low_prices = [p * 0.99 for p in close_prices]
+
+        # Calculate True Range for each day
+        true_ranges = []
+        for i in range(1, len(close_prices)):
+            high = high_prices[i]
+            low = low_prices[i]
+            prev_close = close_prices[i - 1]
+
+            tr = max(
+                high - low,
+                abs(high - prev_close),
+                abs(low - prev_close)
+            )
+            true_ranges.append(tr)
+
+        if len(true_ranges) < period:
+            return None
+
+        # Calculate ATR (simple moving average of TR)
+        atr = sum(true_ranges[-period:]) / period
+        current_price = close_prices[-1]
+
+        # ATR as percentage
+        atr_pct = (atr / current_price) * 100 if current_price > 0 else 0
+
+        # Suggested stop-loss (2x ATR below current price)
+        suggested_stop = current_price - (2 * atr)
+
+        # Volatility level classification
+        if atr_pct < 2:
+            volatility_level = 'low'
+        elif atr_pct < 4:
+            volatility_level = 'medium'
+        elif atr_pct < 8:
+            volatility_level = 'high'
+        else:
+            volatility_level = 'extreme'
+
+        return {
+            'atr': round(atr, 4),
+            'atr_pct': round(atr_pct, 2),
+            'suggested_stop': round(suggested_stop, 4),
+            'volatility_level': volatility_level
+        }
+
+    @staticmethod
+    def calculate_fibonacci_retracement(prices: List[Tuple[datetime, float]], lookback: int = 60) -> Optional[dict]:
+        """
+        Fibonacci Retracement levels for support/resistance identification.
+
+        Args:
+            prices: List of (datetime, price)
+            lookback: Period to find swing high/low
+
+        Returns:
+            {
+                'levels': dict,            # Fib levels (0%, 23.6%, 38.2%, 50%, 61.8%, 78.6%, 100%)
+                'swing_high': float,       # Recent swing high
+                'swing_low': float,        # Recent swing low
+                'current_zone': str,       # Current price zone
+                'nearest_support': float,  # Nearest support below
+                'nearest_resistance': float # Nearest resistance above
+            }
+        """
+        if len(prices) < lookback:
+            return None
+
+        recent_prices = [p[1] for p in prices[-lookback:]]
+        current_price = recent_prices[-1]
+        swing_high = max(recent_prices)
+        swing_low = min(recent_prices)
+
+        if swing_high == swing_low:
+            return None
+
+        diff = swing_high - swing_low
+
+        # Calculate Fibonacci levels
+        levels = {
+            '0.0': swing_low,
+            '23.6': swing_low + (diff * 0.236),
+            '38.2': swing_low + (diff * 0.382),
+            '50.0': swing_low + (diff * 0.5),
+            '61.8': swing_low + (diff * 0.618),
+            '78.6': swing_low + (diff * 0.786),
+            '100.0': swing_high
+        }
+
+        # Determine current zone
+        level_values = sorted(levels.values())
+        current_zone = 'below_0'
+        for i, level in enumerate(level_values):
+            if current_price <= level:
+                if i == 0:
+                    current_zone = 'below_0'
+                else:
+                    prev_pct = list(levels.keys())[list(levels.values()).index(level_values[i-1])]
+                    curr_pct = list(levels.keys())[list(levels.values()).index(level)]
+                    current_zone = f'{prev_pct}-{curr_pct}'
+                break
+        else:
+            current_zone = 'above_100'
+
+        # Find nearest support and resistance
+        nearest_support = swing_low
+        nearest_resistance = swing_high
+
+        for level in sorted(levels.values()):
+            if level < current_price:
+                nearest_support = level
+            elif level > current_price:
+                nearest_resistance = level
+                break
+
+        return {
+            'levels': {k: round(v, 4) for k, v in levels.items()},
+            'swing_high': round(swing_high, 4),
+            'swing_low': round(swing_low, 4),
+            'current_zone': current_zone,
+            'nearest_support': round(nearest_support, 4),
+            'nearest_resistance': round(nearest_resistance, 4)
+        }
+
+    @staticmethod
+    def calculate_ichimoku(prices: List[Tuple[datetime, float]],
+                           tenkan_period: int = 9,
+                           kijun_period: int = 26,
+                           senkou_b_period: int = 52) -> Optional[dict]:
+        """
+        Ichimoku Cloud components for trend analysis.
+
+        Args:
+            prices: List of (datetime, price)
+            tenkan_period: Conversion line period (default 9)
+            kijun_period: Base line period (default 26)
+            senkou_b_period: Leading Span B period (default 52)
+
+        Returns:
+            {
+                'tenkan_sen': float,       # Conversion Line
+                'kijun_sen': float,        # Base Line
+                'senkou_span_a': float,    # Leading Span A
+                'senkou_span_b': float,    # Leading Span B
+                'chikou_span': float,      # Lagging Span
+                'cloud_top': float,        # Top of cloud
+                'cloud_bottom': float,     # Bottom of cloud
+                'cloud_color': str,        # 'bullish' or 'bearish'
+                'price_vs_cloud': str      # 'above', 'below', 'inside'
+            }
+        """
+        if len(prices) < senkou_b_period:
+            return None
+
+        price_values = [p[1] for p in prices]
+        current_price = price_values[-1]
+
+        def calc_midpoint(data, period):
+            if len(data) < period:
+                return None
+            subset = data[-period:]
+            return (max(subset) + min(subset)) / 2
+
+        # Tenkan-sen (Conversion Line)
+        tenkan_sen = calc_midpoint(price_values, tenkan_period)
+
+        # Kijun-sen (Base Line)
+        kijun_sen = calc_midpoint(price_values, kijun_period)
+
+        # Senkou Span A (Leading Span A)
+        senkou_span_a = (tenkan_sen + kijun_sen) / 2 if tenkan_sen and kijun_sen else None
+
+        # Senkou Span B (Leading Span B)
+        senkou_span_b = calc_midpoint(price_values, senkou_b_period)
+
+        # Chikou Span (Lagging Span) - current close shifted back 26 periods
+        chikou_span = current_price
+
+        if None in [tenkan_sen, kijun_sen, senkou_span_a, senkou_span_b]:
+            return None
+
+        # Cloud characteristics
+        cloud_top = max(senkou_span_a, senkou_span_b)
+        cloud_bottom = min(senkou_span_a, senkou_span_b)
+        cloud_color = 'bullish' if senkou_span_a > senkou_span_b else 'bearish'
+
+        # Price position relative to cloud
+        if current_price > cloud_top:
+            price_vs_cloud = 'above'
+        elif current_price < cloud_bottom:
+            price_vs_cloud = 'below'
+        else:
+            price_vs_cloud = 'inside'
+
+        return {
+            'tenkan_sen': round(tenkan_sen, 4),
+            'kijun_sen': round(kijun_sen, 4),
+            'senkou_span_a': round(senkou_span_a, 4),
+            'senkou_span_b': round(senkou_span_b, 4),
+            'chikou_span': round(chikou_span, 4),
+            'cloud_top': round(cloud_top, 4),
+            'cloud_bottom': round(cloud_bottom, 4),
+            'cloud_color': cloud_color,
+            'price_vs_cloud': price_vs_cloud
+        }
+
+    @staticmethod
+    def calculate_cci(prices: List[Tuple[datetime, float]],
+                      high_prices: List[float] = None,
+                      low_prices: List[float] = None,
+                      period: int = 20) -> Optional[dict]:
+        """
+        Commodity Channel Index (CCI) for momentum measurement.
+
+        Args:
+            prices: List of (datetime, close_price)
+            high_prices: Optional list of high prices
+            low_prices: Optional list of low prices
+            period: CCI period (default 20)
+
+        Returns:
+            {
+                'cci': float,              # CCI value
+                'overbought': bool,        # CCI > 100
+                'oversold': bool,          # CCI < -100
+                'trend': str               # 'bullish', 'bearish', 'neutral'
+            }
+        """
+        if len(prices) < period:
+            return None
+
+        close_prices = [p[1] for p in prices]
+
+        # Estimate high/low if not provided
+        if high_prices is None:
+            high_prices = [p * 1.01 for p in close_prices]
+        if low_prices is None:
+            low_prices = [p * 0.99 for p in close_prices]
+
+        # Calculate Typical Price (TP) = (High + Low + Close) / 3
+        typical_prices = []
+        for i in range(len(close_prices)):
+            tp = (high_prices[i] + low_prices[i] + close_prices[i]) / 3
+            typical_prices.append(tp)
+
+        # SMA of Typical Price
+        tp_sma = sum(typical_prices[-period:]) / period
+
+        # Mean Deviation
+        mean_deviation = sum(abs(tp - tp_sma) for tp in typical_prices[-period:]) / period
+
+        if mean_deviation == 0:
+            return None
+
+        # CCI = (TP - SMA) / (0.015 * Mean Deviation)
+        current_tp = typical_prices[-1]
+        cci = (current_tp - tp_sma) / (0.015 * mean_deviation)
+
+        # Determine trend
+        if cci > 100:
+            trend = 'bullish'
+            overbought = True
+            oversold = False
+        elif cci < -100:
+            trend = 'bearish'
+            overbought = False
+            oversold = True
+        else:
+            trend = 'neutral'
+            overbought = False
+            oversold = False
+
+        return {
+            'cci': round(cci, 2),
+            'overbought': overbought,
+            'oversold': oversold,
+            'trend': trend
+        }
+
+    @staticmethod
+    def calculate_pivot_points(prices: List[Tuple[datetime, float]],
+                               high_prices: List[float] = None,
+                               low_prices: List[float] = None) -> Optional[dict]:
+        """
+        Pivot Points for support/resistance levels.
+
+        Args:
+            prices: List of (datetime, close_price)
+            high_prices: Optional list of high prices
+            low_prices: Optional list of low prices
+
+        Returns:
+            {
+                'pivot': float,            # Pivot point
+                'r1': float,               # Resistance 1
+                'r2': float,               # Resistance 2
+                'r3': float,               # Resistance 3
+                's1': float,               # Support 1
+                's2': float,               # Support 2
+                's3': float,               # Support 3
+                'current_zone': str        # Current price zone
+            }
+        """
+        if len(prices) < 2:
+            return None
+
+        close_prices = [p[1] for p in prices]
+        current_price = close_prices[-1]
+        prev_close = close_prices[-2]
+
+        # Use previous day's data
+        if high_prices is None:
+            prev_high = prev_close * 1.02
+        else:
+            prev_high = high_prices[-2] if len(high_prices) >= 2 else prev_close * 1.02
+
+        if low_prices is None:
+            prev_low = prev_close * 0.98
+        else:
+            prev_low = low_prices[-2] if len(low_prices) >= 2 else prev_close * 0.98
+
+        # Calculate Pivot Point
+        pivot = (prev_high + prev_low + prev_close) / 3
+
+        # Calculate Resistance levels
+        r1 = (2 * pivot) - prev_low
+        r2 = pivot + (prev_high - prev_low)
+        r3 = prev_high + 2 * (pivot - prev_low)
+
+        # Calculate Support levels
+        s1 = (2 * pivot) - prev_high
+        s2 = pivot - (prev_high - prev_low)
+        s3 = prev_low - 2 * (prev_high - pivot)
+
+        # Determine current zone
+        levels = [('below_s3', s3), ('s3-s2', s2), ('s2-s1', s1), ('s1-pivot', pivot),
+                  ('pivot-r1', r1), ('r1-r2', r2), ('r2-r3', r3), ('above_r3', float('inf'))]
+
+        current_zone = 'below_s3'
+        for zone_name, level in levels:
+            if current_price <= level:
+                current_zone = zone_name
+                break
+
+        return {
+            'pivot': round(pivot, 4),
+            'r1': round(r1, 4),
+            'r2': round(r2, 4),
+            'r3': round(r3, 4),
+            's1': round(s1, 4),
+            's2': round(s2, 4),
+            's3': round(s3, 4),
+            'current_zone': current_zone
+        }
+
+    @staticmethod
+    def calculate_obv(prices_with_volume: List[Tuple[datetime, float, float]]) -> Optional[dict]:
+        """
+        On-Balance Volume (OBV) for volume trend analysis.
+
+        Args:
+            prices_with_volume: List of (datetime, price, volume)
+
+        Returns:
+            {
+                'obv': float,              # Current OBV
+                'obv_ma': float,           # 20-day OBV moving average
+                'obv_trend': str,          # 'bullish', 'bearish', 'neutral'
+                'divergence': str,         # 'bullish', 'bearish', 'none'
+                'confirmation': bool       # Price and OBV moving same direction
+            }
+        """
+        if not prices_with_volume or len(prices_with_volume) < 20:
+            return None
+
+        # Calculate OBV
+        obv_values = [0]
+        for i in range(1, len(prices_with_volume)):
+            _, price, volume = prices_with_volume[i]
+            _, prev_price, _ = prices_with_volume[i - 1]
+
+            if price > prev_price:
+                obv_values.append(obv_values[-1] + volume)
+            elif price < prev_price:
+                obv_values.append(obv_values[-1] - volume)
+            else:
+                obv_values.append(obv_values[-1])
+
+        current_obv = obv_values[-1]
+        obv_ma = sum(obv_values[-20:]) / 20
+
+        # OBV trend (compare current to 10 days ago)
+        obv_10d_ago = obv_values[-10] if len(obv_values) >= 10 else obv_values[0]
+        if current_obv > obv_10d_ago * 1.05:
+            obv_trend = 'bullish'
+        elif current_obv < obv_10d_ago * 0.95:
+            obv_trend = 'bearish'
+        else:
+            obv_trend = 'neutral'
+
+        # Price trend
+        prices = [p[1] for p in prices_with_volume]
+        price_10d_ago = prices[-10] if len(prices) >= 10 else prices[0]
+        current_price = prices[-1]
+
+        if current_price > price_10d_ago * 1.02:
+            price_trend = 'up'
+        elif current_price < price_10d_ago * 0.98:
+            price_trend = 'down'
+        else:
+            price_trend = 'flat'
+
+        # Divergence detection
+        divergence = 'none'
+        if price_trend == 'down' and obv_trend == 'bullish':
+            divergence = 'bullish'  # Price down, OBV up = potential reversal up
+        elif price_trend == 'up' and obv_trend == 'bearish':
+            divergence = 'bearish'  # Price up, OBV down = potential reversal down
+
+        # Confirmation
+        confirmation = (
+            (price_trend == 'up' and obv_trend == 'bullish') or
+            (price_trend == 'down' and obv_trend == 'bearish')
+        )
+
+        return {
+            'obv': round(current_obv, 0),
+            'obv_ma': round(obv_ma, 0),
+            'obv_trend': obv_trend,
+            'divergence': divergence,
+            'confirmation': confirmation
+        }
+
+    @staticmethod
+    def calculate_mfi(prices_with_volume: List[Tuple[datetime, float, float]],
+                      high_prices: List[float] = None,
+                      low_prices: List[float] = None,
+                      period: int = 14) -> Optional[dict]:
+        """
+        Money Flow Index (MFI) for volume-weighted momentum.
+
+        Args:
+            prices_with_volume: List of (datetime, close_price, volume)
+            high_prices: Optional list of high prices
+            low_prices: Optional list of low prices
+            period: MFI period (default 14)
+
+        Returns:
+            {
+                'mfi': float,              # MFI value (0-100)
+                'overbought': bool,        # MFI > 80
+                'oversold': bool,          # MFI < 20
+                'divergence': str          # 'bullish', 'bearish', 'none'
+            }
+        """
+        if not prices_with_volume or len(prices_with_volume) < period + 1:
+            return None
+
+        close_prices = [p[1] for p in prices_with_volume]
+        volumes = [p[2] for p in prices_with_volume]
+
+        # Estimate high/low if not provided
+        if high_prices is None:
+            high_prices = [p * 1.01 for p in close_prices]
+        if low_prices is None:
+            low_prices = [p * 0.99 for p in close_prices]
+
+        # Calculate Typical Price and Raw Money Flow
+        typical_prices = []
+        for i in range(len(close_prices)):
+            tp = (high_prices[i] + low_prices[i] + close_prices[i]) / 3
+            typical_prices.append(tp)
+
+        # Calculate positive and negative money flow
+        positive_flow = 0
+        negative_flow = 0
+
+        for i in range(-period, 0):
+            money_flow = typical_prices[i] * volumes[i]
+
+            if typical_prices[i] > typical_prices[i - 1]:
+                positive_flow += money_flow
+            elif typical_prices[i] < typical_prices[i - 1]:
+                negative_flow += money_flow
+
+        # Calculate MFI
+        if negative_flow == 0:
+            mfi = 100
+        else:
+            money_ratio = positive_flow / negative_flow
+            mfi = 100 - (100 / (1 + money_ratio))
+
+        # Overbought/Oversold
+        overbought = mfi > 80
+        oversold = mfi < 20
+
+        # Divergence detection (compare price and MFI trends)
+        price_change = (close_prices[-1] - close_prices[-period]) / close_prices[-period] if close_prices[-period] > 0 else 0
+
+        divergence = 'none'
+        if price_change < -0.05 and mfi > 30:  # Price down significantly but MFI not oversold
+            divergence = 'bullish'
+        elif price_change > 0.05 and mfi < 70:  # Price up significantly but MFI not overbought
+            divergence = 'bearish'
+
+        return {
+            'mfi': round(mfi, 2),
+            'overbought': overbought,
+            'oversold': oversold,
+            'divergence': divergence
+        }

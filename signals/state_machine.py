@@ -10,8 +10,9 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from features import FeatureCalculator
+from features.pattern_detector import PatternDetector, PatternType
 from fetchers import YahooFetcher, CoinGeckoFetcher
-from core.constants import DEEP_BOTTOM_THRESHOLDS
+from core.constants import DEEP_BOTTOM_THRESHOLDS, PATTERN_DETECTION_CONFIG
 from scoring.fundamental_scorer import FundamentalScorer, FundamentalHealth
 
 
@@ -478,6 +479,154 @@ class StateMachine:
                 pass
 
         detected = signal_strength in ['strong', 'moderate']
+
+        return (detected, metrics)
+
+    def check_pattern_confirmation(
+        self,
+        symbol: str,
+        signal_type: str = 'bullish',
+        lookback: int = 60
+    ) -> Tuple[bool, Optional[Dict]]:
+        """
+        Check for pattern confirmation of trading signals.
+
+        Args:
+            symbol: Stock or crypto symbol
+            signal_type: 'bullish' or 'bearish'
+            lookback: Days to analyze for patterns
+
+        Returns:
+            (has_confirmation: bool, pattern_details: dict)
+        """
+        # Fetch price data
+        if is_crypto_symbol(symbol):
+            prices = self.coingecko_fetcher.get_historical_prices(symbol, days=lookback)
+        else:
+            prices = self.yahoo_fetcher.get_historical_prices(symbol, days=lookback)
+
+        if not prices or len(prices) < 20:
+            return (False, None)
+
+        # Initialize pattern detector with config
+        config = {
+            'gap_min_pct': PATTERN_DETECTION_CONFIG.GAP_MIN_PCT,
+            'double_top_tolerance_pct': PATTERN_DETECTION_CONFIG.DOUBLE_TOP_TOLERANCE_PCT,
+            'wedge_min_touches': PATTERN_DETECTION_CONFIG.WEDGE_MIN_TOUCHES,
+            'trendline_break_threshold_pct': PATTERN_DETECTION_CONFIG.TRENDLINE_BREAK_THRESHOLD_PCT,
+            'min_pattern_confidence': PATTERN_DETECTION_CONFIG.MIN_PATTERN_CONFIDENCE
+        }
+        detector = PatternDetector(config)
+
+        # Detect patterns
+        all_patterns = detector.detect_all_patterns(prices, lookback=lookback)
+
+        if not all_patterns:
+            return (False, {'patterns': [], 'confirmation': False})
+
+        # Filter by signal type
+        if signal_type == 'bullish':
+            relevant_patterns = detector.get_bullish_patterns(all_patterns)
+        else:
+            relevant_patterns = detector.get_bearish_patterns(all_patterns)
+
+        # Check for strong confirmation
+        high_confidence_patterns = [
+            p for p in relevant_patterns
+            if p.confidence >= PATTERN_DETECTION_CONFIG.MIN_PATTERN_CONFIDENCE
+        ]
+
+        has_confirmation = len(high_confidence_patterns) > 0
+
+        # Build details
+        pattern_details = {
+            'patterns': [p.to_dict() for p in relevant_patterns],
+            'high_confidence_patterns': [p.to_dict() for p in high_confidence_patterns],
+            'confirmation': has_confirmation,
+            'pattern_count': len(relevant_patterns),
+            'high_confidence_count': len(high_confidence_patterns)
+        }
+
+        # Add strongest pattern info
+        if high_confidence_patterns:
+            strongest = max(high_confidence_patterns, key=lambda p: p.confidence)
+            pattern_details['strongest_pattern'] = {
+                'type': strongest.pattern_type.value,
+                'confidence': strongest.confidence,
+                'target': strongest.target_price,
+                'invalidation': strongest.invalidation_price
+            }
+
+        return (has_confirmation, pattern_details)
+
+    def check_deep_bottom_with_patterns(
+        self,
+        symbol: str,
+        include_volume: bool = True,
+        include_fundamentals: bool = True,
+        require_pattern: bool = False
+    ) -> Tuple[bool, Optional[Dict]]:
+        """
+        Enhanced Deep Bottom detection with pattern confirmation.
+
+        Combines V2 scoring with pattern detection for higher confidence signals.
+
+        Args:
+            symbol: Stock or crypto symbol
+            include_volume: Include volume analysis
+            include_fundamentals: Include fundamental scoring (stocks only)
+            require_pattern: If True, requires pattern confirmation for detection
+
+        Returns:
+            (detected: bool, metrics: dict)
+        """
+        # Get V2 deep bottom analysis
+        detected, metrics = self.check_deep_bottom_advanced_v2(
+            symbol, include_volume, include_fundamentals
+        )
+
+        if metrics is None:
+            return (False, None)
+
+        # Check for bullish patterns
+        pattern_confirmed, pattern_details = self.check_pattern_confirmation(
+            symbol, signal_type='bullish', lookback=60
+        )
+
+        # Add pattern info to metrics
+        metrics['pattern_analysis'] = pattern_details
+        metrics['pattern_confirmed'] = pattern_confirmed
+
+        # Adjust signal based on pattern confirmation
+        signal_strength = metrics.get('signal_strength')
+
+        if pattern_confirmed:
+            # Upgrade signal strength if patterns confirm
+            if signal_strength == 'weak':
+                metrics['signal_strength'] = 'moderate'
+                metrics['pattern_upgrade'] = True
+            elif signal_strength == 'moderate':
+                metrics['confidence'] = min(95, metrics.get('confidence', 50) + 10)
+                metrics['pattern_bonus'] = True
+
+            # Add pattern-based target prices
+            if pattern_details and pattern_details.get('strongest_pattern'):
+                strongest = pattern_details['strongest_pattern']
+                if strongest.get('target'):
+                    metrics['pattern_target'] = strongest['target']
+                if strongest.get('invalidation'):
+                    metrics['pattern_invalidation'] = strongest['invalidation']
+
+        elif require_pattern:
+            # If pattern required but not found, downgrade signal
+            if signal_strength in ['strong', 'moderate']:
+                metrics['signal_strength'] = 'weak'
+                metrics['pattern_required_missing'] = True
+                detected = False
+
+        # Update detection based on new signal strength
+        if not require_pattern:
+            detected = metrics.get('signal_strength') in ['strong', 'moderate']
 
         return (detected, metrics)
 
