@@ -1,10 +1,10 @@
 """
-エクスポート機能コンポーネント
-PDF、Excel、CSV、チャート画像のエクスポート
+Export Components
+PDF, Excel, CSV, and chart image export functionality
 """
 import streamlit as st
 import pandas as pd
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
 import io
 import base64
@@ -12,7 +12,7 @@ from pathlib import Path
 
 try:
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from openpyxl.utils.dataframe import dataframe_to_rows
     OPENPYXL_AVAILABLE = True
 except ImportError:
@@ -36,21 +36,53 @@ except ImportError:
     KALEIDO_AVAILABLE = False
 
 
+def sanitize_data_for_export(data: List[Dict]) -> List[Dict]:
+    """
+    Sanitize data for export by flattening complex structures.
+
+    Args:
+        data: Raw data list
+
+    Returns:
+        Cleaned data suitable for DataFrame conversion
+    """
+    if not data:
+        return []
+
+    cleaned = []
+    for item in data:
+        clean_item = {}
+        for key, value in item.items():
+            # Skip complex nested objects
+            if isinstance(value, (dict, list)):
+                continue
+            # Convert to string if not a basic type
+            if value is None:
+                clean_item[key] = ''
+            elif isinstance(value, (int, float, str, bool)):
+                clean_item[key] = value
+            else:
+                clean_item[key] = str(value)
+        cleaned.append(clean_item)
+    return cleaned
+
+
 def export_to_csv(data: List[Dict], filename: Optional[str] = None) -> bytes:
     """
-    CSV形式でエクスポート
-    
+    Export to CSV format
+
     Args:
-        data: エクスポートするデータのリスト
-        filename: ファイル名（オプション）
-    
+        data: List of data to export
+        filename: Filename (optional)
+
     Returns:
-        CSVデータのバイト列
+        CSV data as bytes
     """
     if not data:
         return b""
-    
-    df = pd.DataFrame(data)
+
+    clean_data = sanitize_data_for_export(data)
+    df = pd.DataFrame(clean_data)
     csv_buffer = io.StringIO()
     df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
     return csv_buffer.getvalue().encode('utf-8-sig')
@@ -58,40 +90,50 @@ def export_to_csv(data: List[Dict], filename: Optional[str] = None) -> bytes:
 
 def export_to_excel(data: List[Dict], filename: Optional[str] = None) -> bytes:
     """
-    Excel形式でエクスポート
-    
+    Export to Excel format
+
     Args:
-        data: エクスポートするデータのリスト
-        filename: ファイル名（オプション）
-    
+        data: List of data to export
+        filename: Filename (optional)
+
     Returns:
-        Excelデータのバイト列
+        Excel data as bytes
     """
     if not OPENPYXL_AVAILABLE:
         raise ImportError("openpyxl is required for Excel export. Install it with: pip install openpyxl")
-    
+
     if not data:
         return b""
-    
-    df = pd.DataFrame(data)
+
+    clean_data = sanitize_data_for_export(data)
+    df = pd.DataFrame(clean_data)
     wb = Workbook()
     ws = wb.active
-    ws.title = "データ"
-    
-    # ヘッダーのスタイル
-    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF")
-    
-    # データを書き込み
+    ws.title = "Investment Data"
+
+    # Header styling
+    header_fill = PatternFill(start_color="1a1a2e", end_color="1a1a2e", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    thin_border = Border(
+        left=Side(style='thin', color='444444'),
+        right=Side(style='thin', color='444444'),
+        top=Side(style='thin', color='444444'),
+        bottom=Side(style='thin', color='444444')
+    )
+
+    # Write data
     for r_idx, row in enumerate(dataframe_to_rows(df, index=False, header=True), 1):
         for c_idx, value in enumerate(row, 1):
             cell = ws.cell(row=r_idx, column=c_idx, value=value)
-            if r_idx == 1:  # ヘッダー行
+            cell.border = thin_border
+            if r_idx == 1:  # Header row
                 cell.fill = header_fill
                 cell.font = header_font
                 cell.alignment = Alignment(horizontal="center", vertical="center")
-    
-    # 列幅の自動調整
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+
+    # Auto-adjust column width
     for column in ws.columns:
         max_length = 0
         column_letter = column[0].column_letter
@@ -103,8 +145,8 @@ def export_to_excel(data: List[Dict], filename: Optional[str] = None) -> bytes:
                 pass
         adjusted_width = min(max_length + 2, 50)
         ws.column_dimensions[column_letter].width = adjusted_width
-    
-    # バイト列に変換
+
+    # Convert to bytes
     excel_buffer = io.BytesIO()
     wb.save(excel_buffer)
     excel_buffer.seek(0)
@@ -113,99 +155,110 @@ def export_to_excel(data: List[Dict], filename: Optional[str] = None) -> bytes:
 
 def export_chart_to_image(fig: go.Figure, format: str = "png", width: int = 1200, height: int = 600) -> bytes:
     """
-    チャートを画像としてエクスポート
-    
+    Export chart as image
+
     Args:
-        fig: Plotly Figureオブジェクト
-        format: 画像形式（png, svg, jpeg, webp）
-        width: 画像の幅
-        height: 画像の高さ
-    
+        fig: Plotly Figure object
+        format: Image format (png, svg, jpeg, webp)
+        width: Image width
+        height: Image height
+
     Returns:
-        画像データのバイト列
+        Image data as bytes
     """
     if not KALEIDO_AVAILABLE:
         raise ImportError("kaleido is required for chart export. Install it with: pip install kaleido")
-    
+
     try:
         img_bytes = fig.to_image(format=format, width=width, height=height)
         return img_bytes
     except Exception as e:
-        st.error(f"チャート画像のエクスポートに失敗しました: {e}")
+        st.error(f"Failed to export chart image: {e}")
         return b""
 
 
 def export_to_pdf(
     data: List[Dict],
-    title: str = "投資分析レポート",
+    title: str = "Investment Analysis Report",
     filename: Optional[str] = None
 ) -> bytes:
     """
-    PDF形式でエクスポート
-    
+    Export to PDF format
+
     Args:
-        data: エクスポートするデータのリスト
-        title: レポートタイトル
-        filename: ファイル名（オプション）
-    
+        data: List of data to export
+        title: Report title
+        filename: Filename (optional)
+
     Returns:
-        PDFデータのバイト列
+        PDF data as bytes
     """
     if not REPORTLAB_AVAILABLE:
         raise ImportError("reportlab is required for PDF export. Install it with: pip install reportlab")
-    
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4)
     story = []
     styles = getSampleStyleSheet()
-    
-    # タイトル
+
+    # Title
     title_style = styles['Heading1']
-    title_style.textColor = colors.HexColor('#2c3e50')
+    title_style.textColor = colors.HexColor('#1a1a2e')
     story.append(Paragraph(title, title_style))
     story.append(Spacer(1, 0.2*inch))
-    
-    # 日付
-    date_str = datetime.now().strftime('%Y年%m月%d日 %H:%M')
-    story.append(Paragraph(f"生成日時: {date_str}", styles['Normal']))
+
+    # Date
+    date_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+    story.append(Paragraph(f"Generated: {date_str}", styles['Normal']))
     story.append(Spacer(1, 0.3*inch))
-    
+
     if not data:
-        story.append(Paragraph("データがありません", styles['Normal']))
+        story.append(Paragraph("No data available", styles['Normal']))
         doc.build(story)
         buffer.seek(0)
         return buffer.getvalue()
-    
-    # データテーブル
-    df = pd.DataFrame(data)
-    
-    # テーブルヘッダー
+
+    # Data table
+    clean_data = sanitize_data_for_export(data)
+    df = pd.DataFrame(clean_data)
+
+    # Limit columns for PDF
+    priority_cols = ['symbol', 'Symbol', 'total_score', 'Score', 'current_state', 'State',
+                     'category', 'Category', 'current_price', 'Price']
+    available_cols = [c for c in priority_cols if c in df.columns]
+    if available_cols:
+        df = df[available_cols]
+    elif len(df.columns) > 6:
+        df = df.iloc[:, :6]
+
+    # Table header
     table_data = [df.columns.tolist()]
-    
-    # テーブルデータ（最大100行）
+
+    # Table data (max 100 rows)
     max_rows = min(100, len(df))
     for idx, row in df.head(max_rows).iterrows():
-        table_data.append([str(val) for val in row.values])
-    
+        table_data.append([str(val)[:30] for val in row.values])  # Truncate long values
+
     table = Table(table_data)
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#366092')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1a1a2e')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#f8f9fa')),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#dee2e6')),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
     ]))
-    
+
     story.append(table)
-    
+
     if len(df) > max_rows:
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph(f"※ 表示は最大{max_rows}行までです。全{len(df)}行のデータがあります。", styles['Normal']))
-    
+        story.append(Paragraph(f"* Showing {max_rows} of {len(df)} total rows.", styles['Normal']))
+
     doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
@@ -213,90 +266,88 @@ def export_to_pdf(
 
 def create_export_buttons(data: List[Dict], filename_prefix: str = "export"):
     """
-    エクスポートボタンを作成
-    
+    Create export buttons with modern styling
+
     Args:
-        data: エクスポートするデータ
-        filename_prefix: ファイル名のプレフィックス
+        data: Data to export
+        filename_prefix: Filename prefix
     """
     if not data:
-        st.warning("エクスポートするデータがありません")
+        st.warning("No data available for export")
         return
-    
-    st.subheader("📥 データエクスポート")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
+
+    col1, col2, col3 = st.columns(3)
+
     with col1:
-        csv_data = export_to_csv(data)
-        st.download_button(
-            label="📄 CSV",
-            data=csv_data,
-            file_name=f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
-    
+        try:
+            csv_data = export_to_csv(data)
+            st.download_button(
+                label="📄 Download CSV",
+                data=csv_data,
+                file_name=f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"CSV export error: {e}")
+
     with col2:
         if OPENPYXL_AVAILABLE:
             try:
                 excel_data = export_to_excel(data)
                 st.download_button(
-                    label="📊 Excel",
+                    label="📊 Download Excel",
                     data=excel_data,
                     file_name=f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
                 )
             except Exception as e:
-                st.error(f"Excelエクスポートエラー: {e}")
+                st.error(f"Excel export error: {e}")
         else:
-            st.info("Excelエクスポートにはopenpyxlが必要です")
-    
+            st.info("Excel export requires openpyxl")
+
     with col3:
         if REPORTLAB_AVAILABLE:
             try:
-                pdf_data = export_to_pdf(data, title="投資分析レポート")
+                pdf_data = export_to_pdf(data, title="Investment Analysis Report")
                 st.download_button(
-                    label="📑 PDF",
+                    label="📑 Download PDF",
                     data=pdf_data,
                     file_name=f"{filename_prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                    mime="application/pdf"
+                    mime="application/pdf",
+                    use_container_width=True
                 )
             except Exception as e:
-                st.error(f"PDFエクスポートエラー: {e}")
+                st.error(f"PDF export error: {e}")
         else:
-            st.info("PDFエクスポートにはreportlabが必要です")
-    
-    with col4:
-        if KALEIDO_AVAILABLE:
-            st.info("チャート画像のエクスポートは各チャートのメニューから利用できます")
-        else:
-            st.info("チャート画像エクスポートにはkaleidoが必要です")
+            st.info("PDF export requires reportlab")
 
 
 def export_chart_button(fig: go.Figure, chart_name: str = "chart"):
     """
-    チャート画像エクスポートボタン
-    
+    Chart image export button
+
     Args:
-        fig: Plotly Figureオブジェクト
-        chart_name: チャート名
+        fig: Plotly Figure object
+        chart_name: Chart name
     """
     if not KALEIDO_AVAILABLE:
         return
-    
+
     col1, col2 = st.columns([1, 3])
     with col1:
-        format_type = st.selectbox("形式", ["PNG", "SVG", "JPEG"], key=f"format_{chart_name}")
-    
+        format_type = st.selectbox("Format", ["PNG", "SVG", "JPEG"], key=f"format_{chart_name}")
+
     with col2:
         try:
             img_data = export_chart_to_image(fig, format=format_type.lower())
             if img_data:
                 st.download_button(
-                    label=f"📷 {format_type}として保存",
+                    label=f"📷 Save as {format_type}",
                     data=img_data,
                     file_name=f"{chart_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{format_type.lower()}",
                     mime=f"image/{format_type.lower()}"
                 )
         except Exception as e:
-            st.error(f"画像エクスポートエラー: {e}")
+            st.error(f"Image export error: {e}")
