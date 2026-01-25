@@ -1,6 +1,6 @@
 """
-Streamlit投資分析ダッシュボード
-最高完成度の可視化ダッシュボード
+Investment Analysis Dashboard
+Professional stock analysis and screening platform
 """
 import streamlit as st
 import json
@@ -39,15 +39,15 @@ from streamlit_components.backtest_page import render_backtest_page
 from streamlit_components.deep_bottom_page import render_deep_bottom_page
 from streamlit_components.ten_bagger_page import render_ten_bagger_page
 
-# ページ設定
+# Page configuration
 st.set_page_config(
-    page_title="投資分析ダッシュボード",
+    page_title="Investment Analysis Dashboard",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# ダークモード判定
+# Dark mode detection
 dark_mode = st.session_state.get('dark_mode', False)
 
 # カスタムCSS - モダンでプロフェッショナルなデザイン（ダークモード対応）
@@ -422,52 +422,63 @@ def get_symbol_detail_data_cached(symbol: str) -> Optional[Dict]:
 
 
 def main():
-    """メインアプリケーション"""
-    # サイドバー
+    """Main application"""
+    # Sidebar
     with st.sidebar:
-        st.title("📊 投資分析ダッシュボード")
+        st.title("📊 Investment Dashboard")
         st.markdown("---")
-        
-        # ページ選択
+
+        # Page selection
         page = st.radio(
-            "ページを選択",
-            ["🏠 ホーム", "💎 Deep Bottom", "🚀 Ten Bagger", "📈 銘柄詳細", "💡 理由説明", "🔍 比較分析", "🔬 バックテスト", "💼 ポートフォリオ", "🔔 アラート", "⚙️ 設定"],
+            "Select Page",
+            [
+                "🏠 Home",
+                "💎 Deep Bottom",
+                "🚀 Ten Bagger",
+                "📈 Stock Detail",
+                "💡 Analysis",
+                "🔍 Compare",
+                "🔬 Backtest",
+                "💼 Portfolio",
+                "🔔 Alerts",
+                "⚙️ Settings"
+            ],
             index=0
         )
-        
+
         st.markdown("---")
-        
-        # 設定読み込み
+
+        # Load configuration
         config = load_config_cached()
         symbols = config.get('symbols', [])
-        
+
         if not symbols:
-            st.warning("設定ファイルにシンボルがありません")
+            st.warning("No symbols in configuration")
             st.stop()
-        
-        st.info(f"監視銘柄数: {len(symbols)}")
-        
-        # リアルタイム更新設定
+
+        st.info(f"Tracking: {len(symbols)} symbols")
+
+        # Real-time update settings
         st.markdown("---")
-        st.subheader("🔄 更新設定")
-        auto_refresh = st.checkbox("自動更新を有効化", value=st.session_state.get('auto_refresh', False))
+        st.subheader("🔄 Refresh Settings")
+        auto_refresh = st.checkbox("Enable Auto-Refresh", value=st.session_state.get('auto_refresh', False))
         st.session_state.auto_refresh = auto_refresh
         if auto_refresh:
-            refresh_interval = st.selectbox("更新間隔（秒）", [30, 60, 120, 300, 600], index=1, key="refresh_interval_select")
+            refresh_interval = st.selectbox("Refresh Interval (sec)", [30, 60, 120, 300, 600], index=1, key="refresh_interval_select")
             st.session_state.refresh_interval = refresh_interval
             if 'last_refresh' not in st.session_state:
                 st.session_state.last_refresh = datetime.now()
-        
-        # データ更新ボタン
-        if st.button("🔄 データを更新"):
+
+        # Refresh button
+        if st.button("🔄 Refresh Data"):
             st.cache_data.clear()
             st.session_state.last_refresh = datetime.now()
             st.rerun()
-        
-        # 更新ステータス
+
+        # Refresh status
         if 'last_refresh' in st.session_state:
             time_since_refresh = (datetime.now() - st.session_state.last_refresh).total_seconds()
-            st.caption(f"最終更新: {int(time_since_refresh)}秒前")
+            st.caption(f"Last updated: {int(time_since_refresh)}s ago")
     
     # 自動更新処理
     if 'auto_refresh' in st.session_state and st.session_state.auto_refresh:
@@ -479,167 +490,156 @@ def main():
                 st.session_state.last_refresh = datetime.now()
                 st.rerun()
     
-    # メインコンテンツ
-    if page == "🏠 ホーム":
+    # Main content routing
+    if page == "🏠 Home":
         show_home_page(symbols)
     elif page == "💎 Deep Bottom":
         render_deep_bottom_page(symbols)
     elif page == "🚀 Ten Bagger":
         render_ten_bagger_page(symbols)
-    elif page == "📈 銘柄詳細":
+    elif page == "📈 Stock Detail":
         show_symbol_detail_page(symbols)
-    elif page == "💡 理由説明":
+    elif page == "💡 Analysis":
         show_explanation_page(symbols)
-    elif page == "🔍 比較分析":
+    elif page == "🔍 Compare":
         show_comparison_page(symbols)
-    elif page == "🔬 バックテスト":
+    elif page == "🔬 Backtest":
         render_backtest_page()
-    elif page == "💼 ポートフォリオ":
+    elif page == "💼 Portfolio":
         render_portfolio_page()
-    elif page == "🔔 アラート":
+    elif page == "🔔 Alerts":
         render_alerts_page()
-    elif page == "⚙️ 設定":
+    elif page == "⚙️ Settings":
         show_settings_page()
 
 
 def show_home_page(symbols: List[str]):
-    """ホームページを表示"""
-    # データ取得
+    """Display home page"""
     try:
-        with st.spinner("データを取得中..."):
+        with st.spinner("Loading data..."):
             data = get_analysis_data_cached(symbols, max_assets=200)
-        
+
         if not data:
-            st.error("データが取得できませんでした。設定ファイルを確認してください。")
+            st.error("Failed to load data. Please check configuration.")
             return
-        
-        # コンポーネントを使用してレンダリング
+
         render_home_dashboard(data)
-        
+
     except Exception as e:
-        st.error(f"エラーが発生しました: {e}")
+        st.error(f"An error occurred: {e}")
         import traceback
         st.exception(e)
 
 
 def show_symbol_detail_page(symbols: List[str]):
-    """銘柄詳細ページを表示"""
-    # 銘柄選択
-    symbol = st.selectbox("銘柄を選択", symbols)
-    
+    """Display stock detail page"""
+    symbol = st.selectbox("Select Symbol", symbols)
+
     if not symbol:
-        st.warning("銘柄を選択してください")
+        st.warning("Please select a symbol")
         return
-    
-    # データ取得
+
     try:
-        with st.spinner(f"{symbol}のデータを取得中..."):
+        with st.spinner(f"Loading {symbol} data..."):
             data = get_symbol_detail_data_cached(symbol)
-        
+
         if not data:
-            st.error(f"{symbol}のデータが取得できませんでした")
+            st.error(f"Failed to load data for {symbol}")
             return
-        
-        # コンポーネントを使用してレンダリング
+
         render_symbol_detail(data, symbol)
-        
+
     except Exception as e:
-        st.error(f"エラーが発生しました: {e}")
+        st.error(f"An error occurred: {e}")
         import traceback
         st.exception(e)
 
 
 def show_explanation_page(symbols: List[str]):
-    """理由説明ページを表示"""
-    # 銘柄選択
-    symbol = st.selectbox("銘柄を選択", symbols, key="explanation_symbol")
-    
+    """Display analysis explanation page"""
+    symbol = st.selectbox("Select Symbol", symbols, key="explanation_symbol")
+
     if not symbol:
-        st.warning("銘柄を選択してください")
+        st.warning("Please select a symbol")
         return
-    
-    # データ取得
+
     try:
-        with st.spinner(f"{symbol}のデータを取得中..."):
+        with st.spinner(f"Loading {symbol} data..."):
             data = get_symbol_detail_data_cached(symbol)
-        
+
         if not data:
-            st.error(f"{symbol}のデータが取得できませんでした")
+            st.error(f"Failed to load data for {symbol}")
             return
-        
-        # コンポーネントを使用してレンダリング
+
         render_explanation_page(symbol, data)
-        
+
     except Exception as e:
-        st.error(f"エラーが発生しました: {e}")
+        st.error(f"An error occurred: {e}")
         import traceback
         st.exception(e)
 
 
 def show_comparison_page(symbols: List[str]):
-    """比較分析ページを表示"""
-    # 銘柄選択（最大5個）
+    """Display comparison analysis page"""
     selected_symbols = st.multiselect(
-        "比較する銘柄を選択（最大5個）",
+        "Select symbols to compare (max 5)",
         symbols,
         max_selections=5
     )
-    
+
     if not selected_symbols:
-        st.warning("比較する銘柄を選択してください")
+        st.warning("Please select symbols to compare")
         return
-    
-    # データ取得
+
     try:
         comparison_data = []
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         for idx, symbol in enumerate(selected_symbols):
-            status_text.text(f"{symbol}のデータを取得中... ({idx+1}/{len(selected_symbols)})")
+            status_text.text(f"Loading {symbol}... ({idx+1}/{len(selected_symbols)})")
             data = get_symbol_detail_data_cached(symbol)
             if data:
                 comparison_data.append(data)
             progress_bar.progress((idx + 1) / len(selected_symbols))
-        
+
         progress_bar.empty()
         status_text.empty()
-        
+
         if not comparison_data:
-            st.error("データが取得できませんでした")
+            st.error("Failed to load data")
             return
-        
-        # コンポーネントを使用してレンダリング
+
         render_comparison_view(comparison_data)
-        
+
     except Exception as e:
-        st.error(f"エラーが発生しました: {e}")
+        st.error(f"An error occurred: {e}")
         import traceback
         st.exception(e)
 
 
 def show_settings_page():
-    """設定ページを表示"""
-    st.markdown('<div class="main-header">⚙️ 設定</div>', unsafe_allow_html=True)
-    
-    st.subheader("設定情報")
-    
+    """Display settings page"""
+    st.markdown('<div class="main-header">⚙️ Settings</div>', unsafe_allow_html=True)
+
+    st.subheader("Configuration")
+
     config = load_config_cached()
-    
-    st.write(f"**設定ファイル**: config.json")
-    st.write(f"**監視銘柄数**: {len(config.get('symbols', []))}")
-    
+
+    st.write(f"**Config File**: config.json")
+    st.write(f"**Tracked Symbols**: {len(config.get('symbols', []))}")
+
     st.markdown("---")
-    
-    st.subheader("データ更新")
-    st.write("データは自動的にキャッシュされます。")
-    st.write("- 分析データ: 30分間キャッシュ")
-    st.write("- 銘柄詳細: 30分間キャッシュ")
-    st.write("- 設定ファイル: 1時間キャッシュ")
-    
-    if st.button("🔄 全キャッシュをクリア"):
+
+    st.subheader("Cache Settings")
+    st.write("Data is automatically cached:")
+    st.write("- Analysis data: 30 min cache")
+    st.write("- Stock details: 30 min cache")
+    st.write("- Config file: 1 hour cache")
+
+    if st.button("🔄 Clear All Cache"):
         st.cache_data.clear()
-        st.success("キャッシュをクリアしました")
+        st.success("Cache cleared successfully")
         st.rerun()
 
 
