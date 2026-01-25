@@ -604,3 +604,203 @@ class DiscordNotifier:
             self.throttler.mark_notified(symbol, 'deep_bottom')
 
         return success
+
+    def format_deep_bottom_v2_message(
+        self,
+        symbol: str,
+        v2_data: Dict
+    ) -> str:
+        """
+        DEEP_BOTTOM V2（出来高強化版）通知メッセージを生成
+
+        Args:
+            symbol: シンボル名
+            v2_data: V2検出データ辞書
+                - total_score: 総合スコア (0-100)
+                - signal_strength: 'strong', 'moderate', 'weak'
+                - confidence: 信頼度 (50-95)
+                - volume_confirmed: 出来高確認済みか
+                - component_scores: 各コンポーネントのスコア
+                - risk_factors: リスク要因リスト
+                - current_price: 現在価格
+                - drawdown_pct: ATHからの下落率
+                - rsi: RSI値
+        """
+        timestamp = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+
+        # 基本情報
+        total_score = v2_data.get('total_score', 0)
+        signal_strength = v2_data.get('signal_strength', 'weak')
+        confidence = v2_data.get('confidence', 50)
+        volume_confirmed = v2_data.get('volume_confirmed', False)
+        component_scores = v2_data.get('component_scores', {})
+        risk_factors = v2_data.get('risk_factors', [])
+
+        current_price = v2_data.get('current_price', 0)
+        drawdown_pct = v2_data.get('drawdown_pct', 0)
+        rsi = v2_data.get('rsi', 50)
+
+        # シグナル強度の表示
+        strength_display = {
+            'strong': 'STRONG 🔥',
+            'moderate': 'MODERATE ⚡',
+            'weak': 'WEAK 💡'
+        }
+        strength_text = strength_display.get(signal_strength, signal_strength.upper())
+
+        # 出来高確認の表示
+        vol_text = "Yes ✅" if volume_confirmed else "No ❌"
+
+        # メッセージ構築
+        msg = f"💎 **DEEP BOTTOM V2: {symbol}**\n\n"
+
+        msg += f"📊 **Signal: {strength_text}** | 🎯 **Confidence: {confidence}%**\n"
+        msg += f"✅ Volume Confirmed: {vol_text}\n\n"
+
+        # スコア詳細
+        msg += f"📈 **Scores** (150 max → 100 normalized)\n"
+
+        value_score = component_scores.get('value', 0)
+        tech_score = component_scores.get('technical', 0)
+        momentum_score = component_scores.get('momentum', 0)
+        volume_score = component_scores.get('volume', 0)
+        sync_score = component_scores.get('sync', 0)
+
+        msg += f"• Value: {value_score:.0f}/50 (ATH -{drawdown_pct:.1f}%)\n"
+        msg += f"• Technical: {tech_score:.0f}/40 (RSI {rsi:.1f})\n"
+        msg += f"• Momentum: {momentum_score:.0f}/35\n"
+
+        # 出来高スコア詳細
+        vol_climax = v2_data.get('volume_climax_ratio', 1.0)
+        msg += f"• Volume: {volume_score:.0f}/15 (Climax: {vol_climax:.1f}x)\n"
+
+        msg += f"• Sync: {sync_score:.0f}/10\n\n"
+
+        # リスク要因
+        if risk_factors:
+            risk_text = ", ".join(risk_factors)
+        else:
+            risk_text = "None"
+        msg += f"⚠️ Risk: {risk_text}\n"
+
+        # 総合スコア
+        msg += f"💡 Total: {total_score:.0f}/100\n\n"
+
+        # 価格情報
+        if current_price:
+            msg += f"💰 Price: ${current_price:,.2f}\n"
+
+        msg += f"📅 {timestamp}\n"
+
+        # URL
+        from signals import is_crypto_symbol
+        if is_crypto_symbol(symbol):
+            msg += f"`https://www.coingecko.com/en/coins/{symbol.lower()}`"
+        else:
+            msg += f"`https://finance.yahoo.com/quote/{symbol.upper()}`"
+
+        # Discordの2000文字制限に対応
+        if len(msg) > 1900:
+            msg = msg[:1800] + "\n\n... (メッセージ省略) ..."
+
+        return msg
+
+    def notify_deep_bottom_v2(
+        self,
+        symbol: str,
+        v2_data: Dict
+    ) -> bool:
+        """
+        DEEP_BOTTOM V2通知
+
+        Args:
+            symbol: シンボル名
+            v2_data: V2検出データ辞書
+
+        Returns:
+            成功した場合はTrue
+        """
+        # 抑制ロジックチェック（24時間クールダウン）
+        if not self.throttler.should_notify(symbol, 'deep_bottom_v2'):
+            return False
+
+        message = self.format_deep_bottom_v2_message(symbol, v2_data)
+        success = self.send(message)
+
+        if success:
+            self.throttler.mark_notified(symbol, 'deep_bottom_v2')
+
+        return success
+
+    def format_v2_daily_summary_message(
+        self,
+        date: str,
+        signals: List[Dict],
+        total_scanned: int
+    ) -> str:
+        """
+        V2 Daily Summary メッセージを生成
+
+        Args:
+            date: 日付文字列
+            signals: 検出されたシグナルのリスト
+            total_scanned: スキャンした銘柄数
+        """
+        signal_count = len(signals)
+        signal_rate = (signal_count / total_scanned * 100) if total_scanned > 0 else 0
+
+        msg = f"📊 **Daily V2 Deep Bottom Summary** - {date}\n\n"
+        msg += f"🔍 Signals Detected: {signal_count}\n\n"
+
+        # 信頼度別に分類
+        strong_signals = [s for s in signals if s.get('confidence', 0) >= 75]
+        moderate_signals = [s for s in signals if 55 <= s.get('confidence', 0) < 75]
+        weak_signals = [s for s in signals if s.get('confidence', 0) < 55]
+
+        if strong_signals:
+            strong_list = ", ".join([s.get('symbol', '?') for s in strong_signals[:5]])
+            if len(strong_signals) > 5:
+                strong_list += f" (+{len(strong_signals) - 5})"
+            msg += f"**Strong (>=75%):** {strong_list}\n"
+        else:
+            msg += "**Strong (>=75%):** None\n"
+
+        if moderate_signals:
+            moderate_list = ", ".join([s.get('symbol', '?') for s in moderate_signals[:5]])
+            if len(moderate_signals) > 5:
+                moderate_list += f" (+{len(moderate_signals) - 5})"
+            msg += f"**Moderate (55-74%):** {moderate_list}\n"
+        else:
+            msg += "**Moderate (55-74%):** None\n"
+
+        if weak_signals:
+            weak_list = ", ".join([s.get('symbol', '?') for s in weak_signals[:5]])
+            if len(weak_signals) > 5:
+                weak_list += f" (+{len(weak_signals) - 5})"
+            msg += f"**Weak (40-54%):** {weak_list}\n"
+        else:
+            msg += "**Weak (40-54%):** None\n"
+
+        msg += f"\n📈 Scanned: {total_scanned} | Signal Rate: {signal_rate:.1f}%"
+
+        return msg
+
+    def notify_v2_daily_summary(
+        self,
+        date: str,
+        signals: List[Dict],
+        total_scanned: int
+    ) -> bool:
+        """
+        V2 Daily Summary を通知
+
+        Args:
+            date: 日付文字列
+            signals: 検出されたシグナルのリスト
+            total_scanned: スキャンした銘柄数
+
+        Returns:
+            成功した場合はTrue
+        """
+        message = self.format_v2_daily_summary_message(date, signals, total_scanned)
+        return self.send(message)

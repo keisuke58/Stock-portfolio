@@ -111,6 +111,46 @@ class BacktestResult:
         }
 
 
+@dataclass
+class V2SignalMetrics:
+    """V2 signal metrics with volume confirmation and sync bonuses"""
+    total_score: float
+    signal_strength: Optional[str]  # 'strong', 'moderate', 'weak'
+    confidence: int  # 50-95
+    volume_confirmed: bool
+    component_scores: Dict = field(default_factory=dict)
+    risk_factors: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict:
+        return {
+            'total_score': self.total_score,
+            'signal_strength': self.signal_strength,
+            'confidence': self.confidence,
+            'volume_confirmed': self.volume_confirmed,
+            'component_scores': self.component_scores,
+            'risk_factors': self.risk_factors,
+        }
+
+
+@dataclass
+class V2ComparisonResult:
+    """Comparison result between V1 and V2 scoring"""
+    symbol: str
+    period: str
+    v1_result: Optional[BacktestResult]
+    v2_result: Optional[BacktestResult]
+    comparison_metrics: Dict = field(default_factory=dict)
+
+    def to_dict(self) -> Dict:
+        return {
+            'symbol': self.symbol,
+            'period': self.period,
+            'v1_result': self.v1_result.to_dict() if self.v1_result else None,
+            'v2_result': self.v2_result.to_dict() if self.v2_result else None,
+            'comparison_metrics': self.comparison_metrics,
+        }
+
+
 class DeepBottomBacktester:
     """
     Backtest Deep Bottom detection strategy.
@@ -521,6 +561,406 @@ class DeepBottomBacktester:
             best_signal=best_signal,
             worst_signal=worst_signal,
             outcomes=outcomes
+        )
+
+    # ========== V2 BACKTEST METHODS ==========
+
+    def _get_extended_prices_with_volume(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime
+    ) -> Optional[List[Tuple[datetime, float, float]]]:
+        """
+        Get extended historical prices with volume for V2 backtesting.
+
+        Returns:
+            List of (datetime, price, volume) tuples, or None if unavailable
+        """
+        # Calculate total days needed (lookback + range + forward)
+        lookback_start = start_date - timedelta(days=400)
+        forward_end = end_date + timedelta(days=400)
+        total_days = (forward_end - lookback_start).days
+
+        try:
+            if is_crypto_symbol(symbol):
+                # CoinGecko returns prices with volume
+                data = self.coingecko_fetcher.get_historical_prices_with_volume(
+                    symbol, days=total_days
+                )
+            else:
+                # Yahoo Finance returns OHLCV data
+                data = self.yahoo_fetcher.get_historical_prices_with_volume(
+                    symbol, days=total_days
+                )
+
+            if data:
+                # Filter to our date range
+                return [
+                    (dt, price, vol) for dt, price, vol in data
+                    if lookback_start <= dt <= forward_end
+                ]
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to get volume data for {symbol}: {e}")
+            return None
+
+    def _check_signal_v2(
+        self,
+        symbol: str,
+        prices: List[Tuple[datetime, float]],
+        prices_with_volume: List[Tuple[datetime, float, float]] = None,
+        min_confidence: int = 50
+    ) -> Optional[Tuple[DeepBottomSignal, V2SignalMetrics]]:
+        """
+        Check if current point triggers a V2 Deep Bottom signal.
+
+        Args:
+            symbol: Stock or crypto symbol
+            prices: List of (datetime, price) tuples
+            prices_with_volume: Optional list of (datetime, price, volume) tuples
+            min_confidence: Minimum confidence threshold (default 50)
+
+        Returns:
+            Tuple of (DeepBottomSignal, V2SignalMetrics) if signal detected, None otherwise
+        """
+        current_price = prices[-1][1]
+
+        # Calculate V2 score
+        v2_result = FeatureCalculator.calculate_deep_bottom_score_v2(
+            prices, prices_with_volume
+        )
+
+        if not v2_result:
+            return None
+
+        total_score = v2_result.get('total_score', 0)
+        signal_strength = v2_result.get('signal_strength')
+        confidence = v2_result.get('confidence', 0)
+        volume_confirmed = v2_result.get('volume_confirmed', False)
+        component_scores = v2_result.get('component_scores', {})
+        risk_info = v2_result.get('risk', {})
+
+        # Check minimum confidence
+        if confidence < min_confidence:
+            return None
+
+        # Must have a signal strength
+        if signal_strength is None:
+            return None
+
+        # Map signal strength to SignalType
+        signal_type_map = {
+            'strong': SignalType.STRONG,
+            'moderate': SignalType.MODERATE,
+            'weak': SignalType.WEAK
+        }
+        signal_type = signal_type_map.get(signal_strength, SignalType.WEAK)
+
+        # Calculate basic indicators for the signal
+        drawdown = FeatureCalculator.calculate_drawdown_from_ath(prices) or 0
+        rsi = FeatureCalculator.calculate_rsi(prices, 14) or 50
+
+        # Extract risk factors
+        risk_factors = []
+        if risk_info:
+            if risk_info.get('recent_spike', 0) > 0:
+                risk_factors.append('recent_spike')
+            if risk_info.get('high_volatility', 0) > 0:
+                risk_factors.append('high_volatility')
+            if risk_info.get('thin_volume', 0) > 0:
+                risk_factors.append('thin_volume')
+
+        signal = DeepBottomSignal(
+            symbol=symbol,
+            signal_date=prices[-1][0],
+            signal_type=signal_type,
+            entry_price=current_price,
+            drawdown_pct=drawdown,
+            rsi=rsi,
+            score=total_score,
+            metrics_snapshot={
+                'v2_component_scores': component_scores,
+                'confidence': confidence,
+                'volume_confirmed': volume_confirmed
+            }
+        )
+
+        metrics = V2SignalMetrics(
+            total_score=total_score,
+            signal_strength=signal_strength,
+            confidence=confidence,
+            volume_confirmed=volume_confirmed,
+            component_scores=component_scores,
+            risk_factors=risk_factors
+        )
+
+        return (signal, metrics)
+
+    def _detect_signals_in_range_v2(
+        self,
+        symbol: str,
+        prices: List[Tuple[datetime, float]],
+        prices_with_volume: List[Tuple[datetime, float, float]],
+        start_date: datetime,
+        end_date: datetime,
+        min_confidence: int = 50,
+        volume_filter: bool = True
+    ) -> List[Tuple[DeepBottomSignal, V2SignalMetrics]]:
+        """
+        Detect all V2 Deep Bottom signals within the date range.
+
+        Args:
+            symbol: Stock or crypto symbol
+            prices: List of (datetime, price) tuples
+            prices_with_volume: List of (datetime, price, volume) tuples
+            start_date: Start of detection range
+            end_date: End of detection range
+            min_confidence: Minimum confidence threshold
+            volume_filter: If True, only return volume-confirmed signals
+
+        Returns:
+            List of (DeepBottomSignal, V2SignalMetrics) tuples
+        """
+        signals = []
+        last_signal_date = None
+
+        # Convert prices to dict for easier lookup
+        price_dict = {p[0].date(): p[1] for p in prices}
+        volume_dict = {}
+        if prices_with_volume:
+            volume_dict = {p[0].date(): (p[1], p[2]) for p in prices_with_volume}
+
+        price_dates = sorted(price_dict.keys())
+
+        for i, current_date in enumerate(price_dates):
+            dt = datetime.combine(current_date, datetime.min.time())
+
+            # Only check within backtest range
+            if dt < start_date or dt > end_date:
+                continue
+
+            # Minimum days between signals
+            if last_signal_date:
+                days_since = (dt - last_signal_date).days
+                if days_since < self.config.MIN_DAYS_BETWEEN_SIGNALS:
+                    continue
+
+            # Build lookback window (365 days)
+            lookback_prices = []
+            lookback_with_volume = []
+
+            for j in range(max(0, i - 365), i + 1):
+                date = price_dates[j]
+                lookback_prices.append((
+                    datetime.combine(date, datetime.min.time()),
+                    price_dict[date]
+                ))
+                if date in volume_dict:
+                    pv = volume_dict[date]
+                    lookback_with_volume.append((
+                        datetime.combine(date, datetime.min.time()),
+                        pv[0], pv[1]
+                    ))
+
+            if len(lookback_prices) < 100:
+                continue
+
+            # Run V2 detection
+            result = self._check_signal_v2(
+                symbol,
+                lookback_prices,
+                lookback_with_volume if lookback_with_volume else None,
+                min_confidence
+            )
+
+            if result:
+                signal, metrics = result
+
+                # Apply volume filter if enabled
+                if volume_filter and not metrics.volume_confirmed:
+                    continue
+
+                signal.signal_date = dt
+                signals.append((signal, metrics))
+                last_signal_date = dt
+                logger.debug(
+                    f"V2 Signal detected for {symbol} on {dt.date()}: "
+                    f"confidence={metrics.confidence}, volume_confirmed={metrics.volume_confirmed}"
+                )
+
+        return signals
+
+    def backtest_symbol_v2(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        min_confidence: int = 50,
+        volume_filter: bool = True
+    ) -> Optional[BacktestResult]:
+        """
+        Backtest a single symbol using V2 scoring.
+
+        Args:
+            symbol: Stock or crypto symbol
+            start_date: Start of backtest period
+            end_date: End of backtest period
+            min_confidence: Minimum confidence threshold (default 50)
+            volume_filter: If True, only consider volume-confirmed signals
+
+        Returns:
+            BacktestResult with V2 signals and outcomes
+        """
+        logger.info(f"V2 Backtesting {symbol} from {start_date} to {end_date}")
+
+        # Get extended historical data with volume
+        prices = self._get_extended_prices(symbol, start_date, end_date)
+        prices_with_volume = self._get_extended_prices_with_volume(symbol, start_date, end_date)
+
+        if not prices or len(prices) < 365:
+            logger.warning(f"Insufficient price data for {symbol}")
+            return None
+
+        # Detect V2 signals
+        v2_signals = self._detect_signals_in_range_v2(
+            symbol, prices, prices_with_volume,
+            start_date, end_date,
+            min_confidence, volume_filter
+        )
+
+        if not v2_signals:
+            logger.info(f"No V2 signals detected for {symbol}")
+            return BacktestResult(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                total_signals=0,
+                winners=0,
+                win_rate=0.0,
+                avg_return_3m=0.0,
+                avg_return_6m=0.0,
+                avg_return_12m=0.0,
+                avg_max_drawdown=0.0,
+                avg_days_to_target=None,
+                best_signal=None,
+                worst_signal=None,
+                outcomes=[]
+            )
+
+        # Extract just the signals for outcome calculation
+        signals = [s[0] for s in v2_signals]
+
+        # Calculate outcomes for each signal
+        outcomes = self._calculate_outcomes(signals, prices)
+
+        # Store V2 metrics in outcomes
+        for i, outcome in enumerate(outcomes):
+            if i < len(v2_signals):
+                _, v2_metrics = v2_signals[i]
+                outcome.signal.metrics_snapshot['v2_metrics'] = v2_metrics.to_dict()
+
+        # Aggregate metrics
+        return self._aggregate_results(symbol, start_date, end_date, outcomes)
+
+    def compare_v1_vs_v2(
+        self,
+        symbol: str,
+        start_date: datetime,
+        end_date: datetime,
+        min_confidence_v2: int = 50,
+        volume_filter_v2: bool = True
+    ) -> V2ComparisonResult:
+        """
+        Compare V1 (score-based) vs V2 (volume-enhanced) performance.
+
+        Args:
+            symbol: Stock or crypto symbol
+            start_date: Start of backtest period
+            end_date: End of backtest period
+            min_confidence_v2: Minimum confidence for V2 signals
+            volume_filter_v2: Whether to apply volume filter for V2
+
+        Returns:
+            V2ComparisonResult with side-by-side metrics
+        """
+        logger.info(f"Comparing V1 vs V2 for {symbol} from {start_date} to {end_date}")
+
+        # Run V1 backtest (advanced mode = score-based)
+        v1_result = self.backtest_symbol(symbol, start_date, end_date, 'advanced')
+
+        # Run V2 backtest
+        v2_result = self.backtest_symbol_v2(
+            symbol, start_date, end_date,
+            min_confidence_v2, volume_filter_v2
+        )
+
+        # Calculate comparison metrics
+        comparison_metrics = {}
+
+        if v1_result and v2_result:
+            # Win rate comparison
+            comparison_metrics['win_rate_diff'] = v2_result.win_rate - v1_result.win_rate
+            comparison_metrics['win_rate_improvement'] = (
+                ((v2_result.win_rate - v1_result.win_rate) / v1_result.win_rate * 100)
+                if v1_result.win_rate > 0 else 0
+            )
+
+            # Signal count comparison
+            comparison_metrics['signal_count_v1'] = v1_result.total_signals
+            comparison_metrics['signal_count_v2'] = v2_result.total_signals
+            comparison_metrics['signal_reduction'] = (
+                ((v1_result.total_signals - v2_result.total_signals) / v1_result.total_signals * 100)
+                if v1_result.total_signals > 0 else 0
+            )
+
+            # Return comparison
+            comparison_metrics['avg_return_12m_diff'] = v2_result.avg_return_12m - v1_result.avg_return_12m
+
+            # Volume confirmation rate (from V2 signals)
+            if v2_result.outcomes:
+                volume_confirmed_count = sum(
+                    1 for o in v2_result.outcomes
+                    if o.signal.metrics_snapshot.get('v2_metrics', {}).get('volume_confirmed', False)
+                )
+                comparison_metrics['volume_confirmation_rate'] = (
+                    volume_confirmed_count / len(v2_result.outcomes) * 100
+                )
+            else:
+                comparison_metrics['volume_confirmation_rate'] = 0
+
+            # Confidence distribution
+            confidences = [
+                o.signal.metrics_snapshot.get('v2_metrics', {}).get('confidence', 0)
+                for o in v2_result.outcomes
+                if 'v2_metrics' in o.signal.metrics_snapshot
+            ]
+            if confidences:
+                comparison_metrics['avg_confidence'] = sum(confidences) / len(confidences)
+                comparison_metrics['confidence_distribution'] = {
+                    'high_75_plus': sum(1 for c in confidences if c >= 75),
+                    'moderate_55_74': sum(1 for c in confidences if 55 <= c < 75),
+                    'low_below_55': sum(1 for c in confidences if c < 55)
+                }
+
+            # Determine winner
+            if v2_result.win_rate > v1_result.win_rate:
+                comparison_metrics['winner'] = 'v2'
+            elif v1_result.win_rate > v2_result.win_rate:
+                comparison_metrics['winner'] = 'v1'
+            else:
+                # Tie-breaker: use average return
+                if v2_result.avg_return_12m > v1_result.avg_return_12m:
+                    comparison_metrics['winner'] = 'v2'
+                else:
+                    comparison_metrics['winner'] = 'v1'
+
+        return V2ComparisonResult(
+            symbol=symbol,
+            period=f"{start_date.date()} to {end_date.date()}",
+            v1_result=v1_result,
+            v2_result=v2_result,
+            comparison_metrics=comparison_metrics
         )
 
     def backtest_crash_period(self, period_name: str) -> Optional[BacktestResult]:

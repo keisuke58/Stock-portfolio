@@ -1,8 +1,16 @@
 {
   "webhook": "https://discord.com/api/webhooks/1464210371551428631/o9EUddzSI6dJvjKSo3CtF1ciw9na3wTkZPG5cmjQ2HyR2rmp7BOxGNZdPHoj5BE7jVMf",
+  "webhook_high_confidence": "",
   "line_token": "",
   "slack_webhook": "",
   "gmail_user": "",
   "gmail_password": "",
-  "gmail_to": ""
+  "gmail_to": "",
+  "v2_monitoring": {
+    "enabled": true,
+    "confidence_threshold": 70,
+    "volume_filter": true,
+    "daily_summary_enabled": true,
+    "scan_interval_hours": 24
+  }
 }
