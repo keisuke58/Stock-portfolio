@@ -40,6 +40,36 @@ SCREENER_UNIVERSES = {
         'ENPH', 'SEDG', 'FSLR', 'RUN', 'PLUG', 'BE', 'CHPT', 'BLNK',
         'LCID', 'RIVN', 'NEE', 'AES', 'CWEN', 'ORA', 'NOVA', 'ARRY'
     ],
+    'Fintech & Payments': [
+        'V', 'MA', 'PYPL', 'SQ', 'COIN', 'AFRM', 'UPST', 'SOFI',
+        'ADYEN', 'NU', 'BILL', 'TOST', 'FOUR', 'PAGS', 'GPN', 'FIS'
+    ],
+    'Mega Cap Tech': [
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'AVGO',
+        'ORCL', 'ADBE', 'CRM', 'NFLX', 'CSCO', 'AMD', 'INTC', 'IBM'
+    ],
+    'Mid Cap Growth (50)': [
+        'CRWD', 'SNOW', 'DDOG', 'NET', 'ZS', 'PANW', 'MDB', 'OKTA',
+        'HUBS', 'VEEV', 'BILL', 'CFLT', 'DOCN', 'GTLB', 'PATH', 'S',
+        'ESTC', 'TEAM', 'TWLO', 'FIVN', 'ZI', 'PCTY', 'CDAY', 'PAYC',
+        'SMAR', 'COUP', 'APPN', 'TENB', 'FRSH', 'CLDR', 'SUMO', 'PD',
+        'NEWR', 'RPD', 'JAMF', 'ALTR', 'DOMO', 'AI', 'BIGC', 'BRZE',
+        'AMPL', 'SPT', 'ASAN', 'MNDY', 'GLBE', 'TOST', 'RSKD', 'IOT',
+        'BLZE', 'XM'
+    ],
+    'S&P 500 Sample (100)': [
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK-B',
+        'UNH', 'JNJ', 'JPM', 'V', 'PG', 'MA', 'HD', 'CVX', 'MRK', 'ABBV',
+        'PEP', 'COST', 'TMO', 'AVGO', 'CSCO', 'WMT', 'DIS', 'VZ', 'ADBE',
+        'ACN', 'NFLX', 'CRM', 'AMD', 'INTC', 'QCOM', 'TXN', 'HON', 'IBM',
+        'CAT', 'DE', 'BA', 'RTX', 'LMT', 'GE', 'UPS', 'FDX', 'UNP', 'MMM',
+        'NKE', 'SBUX', 'MCD', 'LOW', 'TGT', 'TJX', 'ROST', 'CMG', 'YUM', 'DPZ',
+        'XOM', 'COP', 'SLB', 'EOG', 'OXY', 'PSX', 'VLO', 'MPC', 'HAL', 'DVN',
+        'LLY', 'PFE', 'BMY', 'GILD', 'REGN', 'VRTX', 'MRNA', 'ISRG', 'DHR', 'ABT',
+        'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'SCHW', 'AXP', 'COF', 'USB',
+        'CMCSA', 'T', 'TMUS', 'CHTR', 'EA', 'TTWO', 'WBD', 'PARA', 'NWSA', 'FOXA',
+        'NEE', 'DUK', 'SO', 'D', 'AEP', 'SRE', 'XEL', 'ED', 'EXC', 'WEC'
+    ],
     'All Growth Sectors': [],  # Will be populated dynamically
     'Custom': []
 }
@@ -279,6 +309,7 @@ def render_universe_screening(screener: TenBaggerScreener, symbols: List[str] = 
     """Render universe screening tab."""
     st.subheader("Screen Stock Universe")
 
+    # Row 1: Universe selection and basic settings
     col1, col2 = st.columns([2, 1])
 
     with col1:
@@ -289,9 +320,14 @@ def render_universe_screening(screener: TenBaggerScreener, symbols: List[str] = 
                 all_growth.extend(list(sector_symbols))
             SCREENER_UNIVERSES['All Growth Sectors'] = list(set(all_growth))
 
+        # Add "From Watchlist" option if symbols provided
+        universe_options = list(SCREENER_UNIVERSES.keys())
+        if symbols:
+            universe_options.insert(0, 'From Watchlist')
+
         universe_choice = st.selectbox(
             "Select Stock Universe",
-            options=list(SCREENER_UNIVERSES.keys()),
+            options=universe_options,
             key="universe_select"
         )
 
@@ -305,21 +341,71 @@ def render_universe_screening(screener: TenBaggerScreener, symbols: List[str] = 
             key="min_score_slider"
         )
 
+    # Row 2: Number of stocks to screen and results limit
+    col3, col4, col5 = st.columns(3)
+
+    with col3:
+        max_stocks = st.number_input(
+            "Max Stocks to Screen",
+            min_value=5,
+            max_value=500,
+            value=50,
+            step=10,
+            help="Limit the number of stocks to analyze (for faster screening)",
+            key="max_stocks_input"
+        )
+
+    with col4:
+        top_n_results = st.number_input(
+            "Show Top N Results",
+            min_value=5,
+            max_value=100,
+            value=20,
+            step=5,
+            help="Number of top results to display",
+            key="top_n_results"
+        )
+
+    with col5:
+        min_rs = st.number_input(
+            "Min RS Rating",
+            min_value=0,
+            max_value=90,
+            value=0,
+            step=10,
+            help="Filter by minimum Relative Strength rating (0 = no filter)",
+            key="min_rs_filter"
+        )
+
     # Custom symbols input
     if universe_choice == 'Custom':
         custom_symbols = st.text_area(
             "Enter symbols (comma-separated)",
-            placeholder="NVDA, AMD, MSFT, GOOGL",
+            placeholder="NVDA, AMD, MSFT, GOOGL, CRWD, SNOW, NET...",
             key="custom_symbols"
         )
         if custom_symbols:
             screen_symbols = [s.strip().upper() for s in custom_symbols.split(',') if s.strip()]
         else:
             screen_symbols = []
+    elif universe_choice == 'From Watchlist' and symbols:
+        screen_symbols = symbols[:max_stocks]
     else:
         screen_symbols = SCREENER_UNIVERSES.get(universe_choice, [])
 
-    st.info(f"Screening {len(screen_symbols)} stocks...")
+    # Limit to max_stocks
+    if len(screen_symbols) > max_stocks:
+        screen_symbols = screen_symbols[:max_stocks]
+
+    # Display info
+    col_info1, col_info2 = st.columns(2)
+    with col_info1:
+        st.info(f"Will screen **{len(screen_symbols)}** stocks")
+    with col_info2:
+        if universe_choice != 'Custom':
+            original_count = len(SCREENER_UNIVERSES.get(universe_choice, symbols or []))
+            if original_count > len(screen_symbols):
+                st.caption(f"(Limited from {original_count} total)")
 
     if st.button("Run Screening", type="primary", key="screen_btn"):
         if not screen_symbols:
@@ -329,24 +415,67 @@ def render_universe_screening(screener: TenBaggerScreener, symbols: List[str] = 
         # Progress tracking
         progress_bar = st.progress(0)
         status_text = st.empty()
+        time_estimate = st.empty()
 
         results = []
+        start_time = time.time()
+
         for i, symbol in enumerate(screen_symbols):
             status_text.text(f"Analyzing {symbol}... ({i+1}/{len(screen_symbols)})")
+
+            # Update time estimate
+            if i > 0:
+                elapsed = time.time() - start_time
+                avg_per_stock = elapsed / i
+                remaining = (len(screen_symbols) - i) * avg_per_stock
+                time_estimate.caption(f"Est. remaining: {remaining:.0f}s")
+
             try:
                 score = screener.score_stock(symbol)
                 if score and score.total_score >= min_score:
+                    # Apply RS filter if set
+                    if min_rs > 0 and score.rs_rating and score.rs_rating < min_rs:
+                        continue
                     results.append(score)
             except Exception as e:
-                st.warning(f"Error analyzing {symbol}: {e}")
+                pass  # Skip errors silently for cleaner output
+
             progress_bar.progress((i + 1) / len(screen_symbols))
 
         progress_bar.empty()
         status_text.empty()
+        time_estimate.empty()
+
+        elapsed_total = time.time() - start_time
 
         if results:
-            st.success(f"Found {len(results)} stocks scoring {min_score}+ points")
-            render_screening_results(results)
+            # Sort by total score and limit to top N
+            results.sort(key=lambda x: x.total_score, reverse=True)
+            display_results = results[:top_n_results]
+
+            st.success(
+                f"Found **{len(results)}** stocks scoring {min_score}+ points "
+                f"(showing top {len(display_results)}) - Completed in {elapsed_total:.1f}s"
+            )
+            render_screening_results(display_results)
+
+            # Show summary stats
+            if len(results) > 0:
+                st.markdown("---")
+                st.subheader("Screening Summary")
+                summary_cols = st.columns(4)
+                with summary_cols[0]:
+                    avg_score = sum(r.total_score for r in results) / len(results)
+                    st.metric("Avg Score", f"{avg_score:.1f}")
+                with summary_cols[1]:
+                    excellent = sum(1 for r in results if r.rating == 'EXCELLENT')
+                    st.metric("Excellent", excellent)
+                with summary_cols[2]:
+                    good = sum(1 for r in results if r.rating == 'GOOD')
+                    st.metric("Good", good)
+                with summary_cols[3]:
+                    with_rs = sum(1 for r in results if r.rs_rating and r.rs_rating >= 80)
+                    st.metric("Strong RS (80+)", with_rs)
         else:
             st.warning(f"No stocks found with score >= {min_score}")
 
