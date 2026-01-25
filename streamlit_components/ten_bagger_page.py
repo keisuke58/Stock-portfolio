@@ -70,6 +70,58 @@ SCREENER_UNIVERSES = {
         'CMCSA', 'T', 'TMUS', 'CHTR', 'EA', 'TTWO', 'WBD', 'PARA', 'NWSA', 'FOXA',
         'NEE', 'DUK', 'SO', 'D', 'AEP', 'SRE', 'XEL', 'ED', 'EXC', 'WEC'
     ],
+    'Large Universe (300+)': [
+        # Mega Cap Tech
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'AVGO', 'ORCL', 'ADBE',
+        'CRM', 'NFLX', 'CSCO', 'AMD', 'INTC', 'IBM', 'QCOM', 'TXN', 'NOW', 'INTU',
+        # Semiconductors
+        'TSM', 'ASML', 'LRCX', 'AMAT', 'KLAC', 'MRVL', 'MU', 'ADI', 'NXPI', 'ON',
+        'SWKS', 'MCHP', 'MPWR', 'ENTG', 'CRUS', 'ALGM', 'RMBS', 'LSCC', 'ARM', 'SMCI',
+        # Cloud & SaaS
+        'SNOW', 'DDOG', 'NET', 'ZS', 'CRWD', 'PANW', 'MDB', 'OKTA', 'SPLK', 'ESTC',
+        'HUBS', 'VEEV', 'BILL', 'CFLT', 'DOCN', 'GTLB', 'PATH', 'S', 'TENB', 'FRSH',
+        'TEAM', 'TWLO', 'ZI', 'PCTY', 'CDAY', 'PAYC', 'SMAR', 'APPN', 'PD', 'JAMF',
+        # E-commerce & Consumer Tech
+        'SHOP', 'MELI', 'SE', 'BABA', 'JD', 'PDD', 'ETSY', 'EBAY', 'W', 'CHWY',
+        'CVNA', 'CARG', 'CPNG', 'GRAB', 'UBER', 'LYFT', 'DASH', 'ABNB', 'BKNG', 'EXPE',
+        # Fintech
+        'V', 'MA', 'PYPL', 'SQ', 'COIN', 'AFRM', 'UPST', 'SOFI', 'NU', 'BILL',
+        'TOST', 'FOUR', 'PAGS', 'GPN', 'FIS', 'FISV', 'AXP', 'COF', 'SYF', 'DFS',
+        # Healthcare & Biotech
+        'UNH', 'JNJ', 'LLY', 'PFE', 'ABBV', 'MRK', 'TMO', 'DHR', 'BMY', 'AMGN',
+        'GILD', 'REGN', 'VRTX', 'MRNA', 'ISRG', 'DXCM', 'ALGN', 'IDXX', 'PODD', 'INCY',
+        'ILMN', 'CRSP', 'NTLA', 'BEAM', 'EDIT', 'EXAS', 'NTRA', 'TWST', 'PACB', 'VCYT',
+        'ABT', 'MDT', 'SYK', 'BDX', 'EW', 'BSX', 'ZBH', 'HOLX', 'DXCM', 'RVTY',
+        # Financials
+        'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'SCHW', 'USB', 'PNC',
+        'TFC', 'AIG', 'MET', 'PRU', 'ALL', 'TRV', 'CB', 'AFL', 'PGR', 'HIG',
+        # Industrials
+        'CAT', 'DE', 'BA', 'RTX', 'LMT', 'GE', 'HON', 'UPS', 'FDX', 'UNP',
+        'CSX', 'NSC', 'MMM', 'EMR', 'ETN', 'ITW', 'PH', 'ROK', 'CMI', 'PCAR',
+        'FAST', 'URI', 'ODFL', 'DAL', 'UAL', 'LUV', 'AAL', 'JBLU', 'ALK', 'SAVE',
+        # Consumer
+        'NKE', 'SBUX', 'MCD', 'HD', 'LOW', 'TGT', 'COST', 'WMT', 'TJX', 'ROST',
+        'CMG', 'YUM', 'DPZ', 'DARDEN', 'DRI', 'WING', 'SHAK', 'CAVA', 'SG', 'EAT',
+        'LULU', 'GPS', 'ANF', 'AEO', 'URBN', 'RL', 'PVH', 'TPR', 'CPRI', 'VFC',
+        # Energy
+        'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'OXY', 'PSX', 'VLO', 'MPC', 'HAL',
+        'DVN', 'FANG', 'PXD', 'HES', 'BKR', 'KMI', 'WMB', 'OKE', 'TRGP', 'LNG',
+        # Clean Energy
+        'ENPH', 'SEDG', 'FSLR', 'RUN', 'PLUG', 'BE', 'CHPT', 'BLNK', 'LCID', 'RIVN',
+        'NEE', 'AES', 'NOVA', 'ARRY', 'MAXN', 'JKS', 'DQ', 'CSIQ', 'SPWR', 'SHLS',
+        # Communications & Media
+        'CMCSA', 'T', 'VZ', 'TMUS', 'CHTR', 'EA', 'TTWO', 'RBLX', 'U', 'MTCH',
+        'SNAP', 'PINS', 'SPOT', 'TTD', 'ROKU', 'WBD', 'PARA', 'DIS', 'FOX', 'NWSA',
+        # REITs
+        'AMT', 'PLD', 'CCI', 'EQIX', 'PSA', 'SPG', 'O', 'WELL', 'DLR', 'AVB',
+        'EQR', 'VTR', 'ARE', 'MAA', 'UDR', 'ESS', 'INVH', 'SUI', 'ELS', 'PEAK',
+        # Materials
+        'LIN', 'APD', 'ECL', 'SHW', 'FCX', 'NEM', 'NUE', 'DOW', 'DD', 'PPG',
+        'VMC', 'MLM', 'ALB', 'CTVA', 'CF', 'MOS', 'FMC', 'IFF', 'CE', 'EMN',
+        # Utilities
+        'NEE', 'DUK', 'SO', 'D', 'AEP', 'SRE', 'XEL', 'ED', 'EXC', 'WEC',
+        'ES', 'PEG', 'AWK', 'AEE', 'CMS', 'DTE', 'ETR', 'FE', 'PPL', 'EVRG'
+    ],
     'All Growth Sectors': [],  # Will be populated dynamically
     'Custom': []
 }
@@ -347,21 +399,21 @@ def render_universe_screening(screener: TenBaggerScreener, symbols: List[str] = 
     with col3:
         max_stocks = st.number_input(
             "Max Stocks to Screen",
-            min_value=5,
-            max_value=500,
-            value=50,
-            step=10,
-            help="Limit the number of stocks to analyze (for faster screening)",
+            min_value=10,
+            max_value=2000,
+            value=100,
+            step=50,
+            help="Number of stocks to analyze (higher = slower but more comprehensive)",
             key="max_stocks_input"
         )
 
     with col4:
         top_n_results = st.number_input(
             "Show Top N Results",
-            min_value=5,
-            max_value=100,
-            value=20,
-            step=5,
+            min_value=10,
+            max_value=500,
+            value=50,
+            step=10,
             help="Number of top results to display",
             key="top_n_results"
         )
