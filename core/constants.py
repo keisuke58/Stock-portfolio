@@ -3,7 +3,7 @@ Centralized constants for the application.
 All magic numbers should be defined here for maintainability.
 """
 from dataclasses import dataclass
-from typing import Set
+from typing import Set, Dict
 
 
 @dataclass(frozen=True)
@@ -404,3 +404,52 @@ class RiskManagementConfig:
 
 PATTERN_DETECTION_CONFIG = PatternDetectionConfig()
 RISK_MANAGEMENT_CONFIG = RiskManagementConfig()
+
+
+@dataclass(frozen=True)
+class TenBaggerConfig:
+    """Configuration for Ten Bagger stock screening."""
+    # Growth thresholds
+    REVENUE_GROWTH_MIN: float = 0.30      # 30%+
+    EARNINGS_GROWTH_MIN: float = 0.40     # 40%+
+    REVENUE_GROWTH_EXCELLENT: float = 0.50  # 50%+ (exceptional)
+
+    # Profitability thresholds
+    GROSS_MARGIN_MIN: float = 0.50        # 50%+
+    NET_MARGIN_MIN: float = 0.15          # 15%+
+    ROE_MIN: float = 0.20                 # 20%+
+    ROE_EXCELLENT: float = 0.30           # 30%+ (exceptional)
+
+    # Valuation thresholds
+    PEG_MAX: float = 1.5                  # <1.5 preferred
+    PEG_EXCELLENT: float = 1.0            # <1.0 excellent
+    FCF_YIELD_MIN: float = 0.03           # 3%+ FCF yield
+
+    # Market cap sweet spot (in dollars)
+    MARKET_CAP_MIN: int = 2_000_000_000   # $2B minimum
+    MARKET_CAP_MAX: int = 100_000_000_000 # $100B maximum
+    MARKET_CAP_OPTIMAL_MIN: int = 5_000_000_000   # $5B
+    MARKET_CAP_OPTIMAL_MAX: int = 50_000_000_000  # $50B
+
+    # Momentum thresholds
+    MOMENTUM_52W_MIN: float = 0.20        # 20%+ 52-week return
+
+    # Score thresholds
+    SCORE_EXCELLENT: float = 80.0         # Top tier candidate
+    SCORE_GOOD: float = 65.0              # Worth investigating
+    SCORE_MARGINAL: float = 50.0          # Some potential
+
+
+# Growth sectors with secular tailwinds
+GROWTH_SECTORS: Dict[str, Set[str]] = {
+    'AI_INFRASTRUCTURE': {'NVDA', 'AMD', 'AVGO', 'MRVL', 'ARM', 'SMCI'},
+    'SEMICONDUCTORS': {'TSM', 'ASML', 'LRCX', 'AMAT', 'KLAC', 'QCOM'},
+    'CLOUD_COMPUTING': {'AMZN', 'MSFT', 'GOOGL', 'CRM', 'NOW', 'SNOW', 'NET'},
+    'BIOTECH_GENOMICS': {'ILMN', 'CRSP', 'NTLA', 'BEAM', 'MRNA', 'REGN'},
+    'CLEAN_ENERGY': {'ENPH', 'SEDG', 'FSLR', 'RUN', 'PLUG', 'BE'},
+    'FINTECH': {'SQ', 'PYPL', 'COIN', 'AFRM', 'UPST', 'SOFI'},
+    'CYBERSECURITY': {'CRWD', 'PANW', 'ZS', 'FTNT', 'S', 'OKTA'},
+    'SPACE_DEFENSE': {'LMT', 'RTX', 'NOC', 'RKLB', 'ASTS', 'LUNR'},
+}
+
+TEN_BAGGER_CONFIG = TenBaggerConfig()

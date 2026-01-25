@@ -37,6 +37,7 @@ from streamlit_components.alert_manager import render_alerts_page
 from streamlit_components.explanation_page import render_explanation_page
 from streamlit_components.backtest_page import render_backtest_page
 from streamlit_components.deep_bottom_page import render_deep_bottom_page
+from streamlit_components.ten_bagger_page import render_ten_bagger_page
 
 # ページ設定
 st.set_page_config(
@@ -430,7 +431,7 @@ def main():
         # ページ選択
         page = st.radio(
             "ページを選択",
-            ["🏠 ホーム", "💎 Deep Bottom", "📈 銘柄詳細", "💡 理由説明", "🔍 比較分析", "🔬 バックテスト", "💼 ポートフォリオ", "🔔 アラート", "⚙️ 設定"],
+            ["🏠 ホーム", "💎 Deep Bottom", "🚀 Ten Bagger", "📈 銘柄詳細", "💡 理由説明", "🔍 比較分析", "🔬 バックテスト", "💼 ポートフォリオ", "🔔 アラート", "⚙️ 設定"],
             index=0
         )
         
@@ -483,6 +484,8 @@ def main():
         show_home_page(symbols)
     elif page == "💎 Deep Bottom":
         render_deep_bottom_page(symbols)
+    elif page == "🚀 Ten Bagger":
+        render_ten_bagger_page(symbols)
     elif page == "📈 銘柄詳細":
         show_symbol_detail_page(symbols)
     elif page == "💡 理由説明":

@@ -5,6 +5,7 @@
 """
 from typing import Optional, List, Tuple, Dict
 from datetime import datetime
+import logging
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from features import FeatureCalculator
 from features.pattern_detector import PatternDetector, PatternType
 from fetchers import YahooFetcher, CoinGeckoFetcher
-from core.constants import DEEP_BOTTOM_THRESHOLDS, PATTERN_DETECTION_CONFIG
+from core.constants import DEEP_BOTTOM_THRESHOLDS, PATTERN_DETECTION_CONFIG, TEN_BAGGER_CONFIG
 from scoring.fundamental_scorer import FundamentalScorer, FundamentalHealth
 
 
@@ -725,6 +726,54 @@ class StateMachine:
             'entry_zone': entry_zone,
             'metrics': metrics
         }
+
+
+    def check_ten_bagger_potential(self, symbol: str) -> Optional[Dict]:
+        """
+        Check if a stock meets ten bagger criteria.
+
+        Args:
+            symbol: Stock ticker symbol
+
+        Returns:
+            Dict with signal info if criteria met, None otherwise
+        """
+        # Skip crypto assets
+        if is_crypto_symbol(symbol):
+            return None
+
+        try:
+            from screeners.ten_bagger_screener import TenBaggerScreener
+
+            screener = TenBaggerScreener(yahoo_fetcher=self.yahoo_fetcher)
+            score = screener.score_stock(symbol)
+
+            if score is None:
+                return None
+
+            if score.total_score >= TEN_BAGGER_CONFIG.SCORE_GOOD:
+                return {
+                    'signal': 'TEN_BAGGER_CANDIDATE',
+                    'symbol': symbol,
+                    'score': score.total_score,
+                    'rating': score.rating,
+                    'growth_score': score.growth_score,
+                    'profitability_score': score.profitability_score,
+                    'valuation_score': score.valuation_score,
+                    'market_position_score': score.market_position_score,
+                    'strengths': score.key_strengths,
+                    'risks': score.key_risks,
+                    'sector': score.sector,
+                    'metrics': score.metrics,
+                    'timestamp': datetime.now().isoformat()
+                }
+
+            return None
+
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error checking ten bagger potential for {symbol}: {e}")
+            return None
 
 
 # グローバル関数（後方互換性のため）
