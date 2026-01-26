@@ -418,8 +418,21 @@ def run_unified_screening(symbols: List[str] = None, top_n: int = 20, max_worker
         return None
 
 
+def format_market_cap(market_cap: float) -> str:
+    """Format market cap to human readable string."""
+    if market_cap is None:
+        return "N/A"
+    if market_cap >= 1e12:
+        return f"${market_cap/1e12:.1f}T"
+    elif market_cap >= 1e9:
+        return f"${market_cap/1e9:.1f}B"
+    elif market_cap >= 1e6:
+        return f"${market_cap/1e6:.0f}M"
+    return f"${market_cap:,.0f}"
+
+
 def render_recommendation_card(score, rank: int, category: str = "overall"):
-    """Render a single recommendation card."""
+    """Render an enhanced recommendation card with comprehensive information."""
     rec_class = score.recommendation.lower().replace('_', '-')
     rec_emoji = {
         'STRONG_BUY': '🚀',
@@ -431,58 +444,187 @@ def render_recommendation_card(score, rank: int, category: str = "overall"):
 
     # Format signals
     signals_html = ""
-    for signal in score.key_signals[:3]:
+    for signal in score.key_signals[:4]:
         signals_html += f'<span class="signal-tag">{signal}</span>'
+
+    # Risk factors
+    risk_html = ""
+    risk_factors = getattr(score, 'risk_factors', [])
+    for risk in risk_factors[:2]:
+        risk_html += f'<span style="display: inline-block; padding: 0.1rem 0.35rem; border-radius: 6px; font-size: 0.55rem; background: rgba(239, 71, 111, 0.2); color: #ef476f; margin: 0.1rem;">{risk}</span>'
 
     # Company name (truncate if too long)
     company_name = getattr(score, 'company_name', '') or score.symbol
-    if len(company_name) > 25:
-        company_name = company_name[:22] + "..."
+    if len(company_name) > 30:
+        company_name = company_name[:27] + "..."
+
+    # Industry
+    industry = getattr(score, 'industry', '') or ''
+    if len(industry) > 25:
+        industry = industry[:22] + "..."
 
     # Links
     yahoo_link = f"https://finance.yahoo.com/quote/{score.symbol}"
+    tradingview_link = f"https://www.tradingview.com/chart/?symbol={score.symbol}"
     website = getattr(score, 'website', '') or ''
 
     # Build links HTML
-    links_html = f'<a href="{yahoo_link}" target="_blank" style="color: #7c9aff; text-decoration: none; font-size: 0.7rem; margin-right: 8px;">📊 Yahoo</a>'
+    links_html = f'''
+        <a href="{yahoo_link}" target="_blank" style="color: #7c9aff; text-decoration: none; font-size: 0.65rem; margin-right: 6px;">📊 Yahoo</a>
+        <a href="{tradingview_link}" target="_blank" style="color: #7c9aff; text-decoration: none; font-size: 0.65rem; margin-right: 6px;">📈 Chart</a>
+    '''
     if website:
-        links_html += f'<a href="{website}" target="_blank" style="color: #7c9aff; text-decoration: none; font-size: 0.7rem;">🌐 Website</a>'
+        links_html += f'<a href="{website}" target="_blank" style="color: #7c9aff; text-decoration: none; font-size: 0.65rem;">🌐 Web</a>'
+
+    # Financial metrics
+    market_cap = getattr(score, 'market_cap', None)
+    pe_ratio = getattr(score, 'pe_ratio', None)
+    forward_pe = getattr(score, 'forward_pe', None)
+    dividend_yield = getattr(score, 'dividend_yield', None)
+    beta = getattr(score, 'beta', None)
+    revenue_growth = getattr(score, 'revenue_growth', None)
+    profit_margin = getattr(score, 'profit_margin', None)
+
+    # Format metrics
+    mc_str = format_market_cap(market_cap)
+    pe_str = f"{pe_ratio:.1f}" if pe_ratio else "N/A"
+    fpe_str = f"{forward_pe:.1f}" if forward_pe else "-"
+    div_str = f"{dividend_yield*100:.1f}%" if dividend_yield else "-"
+    beta_str = f"{beta:.2f}" if beta else "-"
+    rev_growth_str = f"{revenue_growth*100:+.1f}%" if revenue_growth else "-"
+    margin_str = f"{profit_margin*100:.1f}%" if profit_margin else "-"
+
+    # 52-week range
+    week_52_high = getattr(score, 'week_52_high', 0)
+    week_52_low = getattr(score, 'week_52_low', 0)
+    if week_52_high > 0 and week_52_low > 0:
+        price_position = ((score.current_price - week_52_low) / (week_52_high - week_52_low) * 100) if week_52_high != week_52_low else 50
+        range_html = f'''
+            <div style="margin-top: 6px;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.6rem; color: #a0a0a0;">
+                    <span>52W: ${week_52_low:.2f}</span>
+                    <span>${week_52_high:.2f}</span>
+                </div>
+                <div style="height: 4px; background: #1a1a2e; border-radius: 2px; margin-top: 2px; position: relative;">
+                    <div style="width: {price_position:.0f}%; height: 100%; background: linear-gradient(90deg, #ef476f, #ffd60a, #06d6a0); border-radius: 2px;"></div>
+                    <div style="position: absolute; top: -2px; left: {price_position:.0f}%; width: 8px; height: 8px; background: #4cc9f0; border-radius: 50%; transform: translateX(-50%);"></div>
+                </div>
+            </div>
+        '''
+    else:
+        range_html = ""
+
+    # 30-day return color
+    return_30d = score.return_30d
+    return_color = "#06d6a0" if return_30d >= 0 else "#ef476f"
+    return_str = f"{return_30d:+.1f}%" if return_30d else "-"
+
+    # Drawdown color
+    drawdown_pct = score.drawdown_pct
+    drawdown_color = "#ef476f" if drawdown_pct > 20 else "#ffd60a" if drawdown_pct > 10 else "#06d6a0"
+
+    # Confidence indicator
+    confidence = getattr(score, 'confidence', 'LOW')
+    conf_color = {'HIGH': '#06d6a0', 'MEDIUM': '#ffd60a', 'LOW': '#a0a0a0'}.get(confidence, '#a0a0a0')
+
+    # RS Trend indicator
+    rs_trend = getattr(score, 'rs_trend', 'STABLE')
+    trend_emoji = {'IMPROVING': '📈', 'STABLE': '➡️', 'DECLINING': '📉'}.get(rs_trend, '➡️')
 
     st.markdown(f"""
-    <div class="rec-card {rec_class}" style="position: relative;">
+    <div class="rec-card {rec_class}" style="position: relative; padding: 1rem 1rem 0.75rem 1rem;">
         <div class="rank-badge">#{rank}</div>
-        <div class="rec-symbol">
-            {rec_emoji} {score.symbol}
-            <span class="category-badge">{score.sector or score.category}</span>
+
+        <!-- Header: Symbol, Name, Sector -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+                <div class="rec-symbol" style="font-size: 1.2rem;">
+                    {rec_emoji} {score.symbol}
+                </div>
+                <div style="font-size: 0.72rem; color: #c0c0c0; margin-top: 1px;">{company_name}</div>
+                <div style="font-size: 0.62rem; color: #808080;">{industry}</div>
+            </div>
+            <div style="text-align: right;">
+                <span class="category-badge" style="font-size: 0.6rem;">{score.sector or score.category}</span>
+                <div style="font-size: 0.55rem; color: {conf_color}; margin-top: 3px;">● {confidence} Conf</div>
+            </div>
         </div>
-        <div style="font-size: 0.75rem; color: #a0a0a0; margin-top: 2px;">{company_name}</div>
-        <div class="rec-score">{score.unified_score:.1f}</div>
-        <div class="rec-details">
-            <span>${score.current_price:,.2f}</span>
-            <span class="rec-badge {rec_class}">{score.recommendation.replace('_', ' ')}</span>
+
+        <!-- Main Score & Price -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 8px 0;">
+            <div>
+                <div class="rec-score" style="font-size: 2rem; margin: 0;">{score.unified_score:.1f}</div>
+                <span class="rec-badge {rec_class}" style="font-size: 0.65rem;">{score.recommendation.replace('_', ' ')}</span>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 1.3rem; font-weight: 700; color: #ffffff;">${score.current_price:,.2f}</div>
+                <div style="font-size: 0.7rem;">
+                    <span style="color: {return_color};">30d: {return_str}</span>
+                    <span style="color: {drawdown_color}; margin-left: 8px;">ATH: -{drawdown_pct:.1f}%</span>
+                </div>
+            </div>
         </div>
-        <div style="margin: 4px 0;">{links_html}</div>
-        <div class="score-mini">
+
+        <!-- 52-Week Range -->
+        {range_html}
+
+        <!-- Financial Metrics Row -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 8px 0; padding: 6px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+            <div style="text-align: center;">
+                <div style="font-size: 0.7rem; font-weight: 600; color: #4cc9f0;">{mc_str}</div>
+                <div style="font-size: 0.5rem; color: #808080;">Mkt Cap</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 0.7rem; font-weight: 600; color: #ffffff;">{pe_str}</div>
+                <div style="font-size: 0.5rem; color: #808080;">P/E</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 0.7rem; font-weight: 600; color: #ffffff;">{div_str}</div>
+                <div style="font-size: 0.5rem; color: #808080;">Div Yield</div>
+            </div>
+            <div style="text-align: center;">
+                <div style="font-size: 0.7rem; font-weight: 600; color: #ffffff;">{beta_str}</div>
+                <div style="font-size: 0.5rem; color: #808080;">Beta</div>
+            </div>
+        </div>
+
+        <!-- Score Breakdown -->
+        <div class="score-mini" style="margin: 6px 0;">
             <div class="score-mini-item">
-                <div class="score-mini-value">{score.ten_bagger_score:.0f}</div>
-                <div class="score-mini-label">10-Bag</div>
+                <div class="score-mini-value" style="font-size: 0.85rem;">{score.ten_bagger_score:.0f}</div>
+                <div class="score-mini-label">Growth</div>
             </div>
             <div class="score-mini-item">
-                <div class="score-mini-value">{score.rs_rating}</div>
-                <div class="score-mini-label">RS</div>
+                <div class="score-mini-value" style="font-size: 0.85rem;">{score.rs_rating} {trend_emoji}</div>
+                <div class="score-mini-label">RS Rating</div>
             </div>
             <div class="score-mini-item">
-                <div class="score-mini-value">{score.deep_bottom_score:.0f}</div>
+                <div class="score-mini-value" style="font-size: 0.85rem;">{score.deep_bottom_score:.0f}</div>
                 <div class="score-mini-label">Value</div>
             </div>
             <div class="score-mini-item">
-                <div class="score-mini-value">{score.fundamental_score:.0f}</div>
-                <div class="score-mini-label">Fund</div>
+                <div class="score-mini-value" style="font-size: 0.85rem;">{score.fundamental_score:.0f}</div>
+                <div class="score-mini-label">Quality</div>
             </div>
         </div>
-        <div style="margin-top: 0.5rem;">
+
+        <!-- Additional Metrics -->
+        <div style="display: flex; justify-content: space-between; font-size: 0.6rem; color: #a0a0a0; margin: 4px 0; padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.1);">
+            <span>Rev Growth: <b style="color:#ffffff">{rev_growth_str}</b></span>
+            <span>Margin: <b style="color:#ffffff">{margin_str}</b></span>
+            <span>Fwd P/E: <b style="color:#ffffff">{fpe_str}</b></span>
+        </div>
+
+        <!-- Links -->
+        <div style="margin: 6px 0 4px 0;">{links_html}</div>
+
+        <!-- Signals -->
+        <div style="margin-top: 4px;">
             {signals_html}
         </div>
+
+        <!-- Risk Factors (if any) -->
+        {"<div style='margin-top: 4px;'>" + risk_html + "</div>" if risk_html else ""}
     </div>
     """, unsafe_allow_html=True)
 
@@ -755,29 +897,83 @@ def render_screening_section():
                 st.markdown('<div class="sub-header">📊 Full Screening Results Table</div>', unsafe_allow_html=True)
                 overall = results.get('overall', [])
                 if overall:
+                    # Table view options
+                    view_col1, view_col2 = st.columns([1, 1])
+                    with view_col1:
+                        view_mode = st.radio("View", ["Compact", "Full Details"], horizontal=True, key="table_view")
+                    with view_col2:
+                        sort_by = st.selectbox("Sort by", ["Score", "RS Rating", "Growth", "30D Return", "Market Cap"], key="sort_col")
+
                     # Create DataFrame for table view
                     table_data = []
                     for idx, score in enumerate(overall):
                         company_name = getattr(score, 'company_name', '') or score.symbol
-                        if len(company_name) > 30:
-                            company_name = company_name[:27] + "..."
+                        if len(company_name) > 25:
+                            company_name = company_name[:22] + "..."
 
-                        table_data.append({
+                        # Get additional fields
+                        market_cap = getattr(score, 'market_cap', None)
+                        pe_ratio = getattr(score, 'pe_ratio', None)
+                        dividend_yield = getattr(score, 'dividend_yield', None)
+                        beta = getattr(score, 'beta', None)
+                        revenue_growth = getattr(score, 'revenue_growth', None)
+                        return_30d = getattr(score, 'return_30d', 0) or 0
+                        industry = getattr(score, 'industry', '') or ''
+                        confidence = getattr(score, 'confidence', 'LOW')
+                        rs_trend = getattr(score, 'rs_trend', 'STABLE')
+
+                        row = {
                             'Rank': idx + 1,
                             'Symbol': score.symbol,
                             'Company': company_name,
                             'Score': round(score.unified_score, 1),
                             'Rec': score.recommendation,
+                            'Conf': confidence,
                             '10-Bag': round(score.ten_bagger_score, 0),
                             'RS': score.rs_rating,
+                            'Trend': rs_trend[:3],
                             'Value': round(score.deep_bottom_score, 0),
                             'Fund': round(score.fundamental_score, 0),
                             'Price': f"${score.current_price:,.2f}" if score.current_price else "N/A",
-                            'Drawdown': f"{score.drawdown_pct:.1f}%",
-                            'Sector': score.sector or "N/A"
-                        })
+                            '30D': f"{return_30d:+.1f}%",
+                            'Drawdown': f"-{score.drawdown_pct:.1f}%",
+                        }
+
+                        if view_mode == "Full Details":
+                            row.update({
+                                'Mkt Cap': format_market_cap(market_cap),
+                                'P/E': f"{pe_ratio:.1f}" if pe_ratio else "-",
+                                'Div %': f"{dividend_yield*100:.1f}" if dividend_yield else "-",
+                                'Beta': f"{beta:.2f}" if beta else "-",
+                                'Rev Gr': f"{revenue_growth*100:+.0f}%" if revenue_growth else "-",
+                                'Sector': score.sector or "-",
+                                'Industry': industry[:15] if industry else "-",
+                            })
+                        else:
+                            row['Sector'] = score.sector or "-"
+
+                        table_data.append(row)
 
                     df = pd.DataFrame(table_data)
+
+                    # Sort by selected column
+                    sort_map = {
+                        "Score": "Score",
+                        "RS Rating": "RS",
+                        "Growth": "10-Bag",
+                        "30D Return": "30D",
+                        "Market Cap": "Mkt Cap" if view_mode == "Full Details" else "Score"
+                    }
+                    if sort_map[sort_by] in df.columns:
+                        if sort_by == "30D Return":
+                            df['_sort'] = df['30D'].str.replace('%', '').str.replace('+', '').astype(float)
+                            df = df.sort_values('_sort', ascending=False).drop('_sort', axis=1)
+                        elif sort_by == "Market Cap" and view_mode == "Full Details":
+                            # Keep original order for market cap (already sorted by score)
+                            pass
+                        else:
+                            df = df.sort_values(sort_map[sort_by], ascending=False)
+                        df['Rank'] = range(1, len(df) + 1)
 
                     # Color code recommendations
                     def color_rec(val):
@@ -790,18 +986,53 @@ def render_screening_section():
                         }
                         return colors.get(val, '')
 
+                    def color_return(val):
+                        if isinstance(val, str) and '%' in val:
+                            try:
+                                num = float(val.replace('%', '').replace('+', ''))
+                                if num >= 10:
+                                    return 'color: #06d6a0; font-weight: bold'
+                                elif num >= 0:
+                                    return 'color: #4cc9f0'
+                                elif num >= -10:
+                                    return 'color: #ffd60a'
+                                else:
+                                    return 'color: #ef476f'
+                            except:
+                                pass
+                        return ''
+
                     styled_df = df.style.applymap(color_rec, subset=['Rec'])
+                    if '30D' in df.columns:
+                        styled_df = styled_df.applymap(color_return, subset=['30D'])
+
                     st.dataframe(styled_df, use_container_width=True, height=500)
+
+                    # Summary statistics
+                    st.markdown('<div class="sub-header">📈 Summary Statistics</div>', unsafe_allow_html=True)
+                    stat_cols = st.columns(5)
+                    with stat_cols[0]:
+                        strong_buys = len([s for s in overall if s.recommendation == 'STRONG_BUY'])
+                        st.metric("Strong Buys", strong_buys)
+                    with stat_cols[1]:
+                        avg_score = sum(s.unified_score for s in overall) / len(overall)
+                        st.metric("Avg Score", f"{avg_score:.1f}")
+                    with stat_cols[2]:
+                        avg_rs = sum(s.rs_rating for s in overall) / len(overall)
+                        st.metric("Avg RS", f"{avg_rs:.0f}")
+                    with stat_cols[3]:
+                        high_growth = len([s for s in overall if s.ten_bagger_score >= 70])
+                        st.metric("High Growth", high_growth)
+                    with stat_cols[4]:
+                        deep_value = len([s for s in overall if s.deep_bottom_score >= 50])
+                        st.metric("Deep Value", deep_value)
 
                     # Download links for all symbols
                     st.markdown('<div class="sub-header">🔗 Quick Links</div>', unsafe_allow_html=True)
                     links_md = ""
-                    for score in overall[:20]:
-                        company_name = getattr(score, 'company_name', '') or score.symbol
-                        if len(company_name) > 20:
-                            company_name = company_name[:17] + "..."
-                        links_md += f"[{score.symbol}](https://finance.yahoo.com/quote/{score.symbol}) ({company_name}) | "
-                    st.markdown(links_md[:-3], unsafe_allow_html=True)  # Remove trailing " | "
+                    for score in overall[:30]:
+                        links_md += f"[{score.symbol}](https://finance.yahoo.com/quote/{score.symbol}) | "
+                    st.markdown(links_md[:-3], unsafe_allow_html=True)
                 else:
                     st.info("No data available")
 
@@ -815,15 +1046,28 @@ def render_screening_section():
                     export_data.append({
                         'Symbol': score.symbol,
                         'Company': getattr(score, 'company_name', '') or score.symbol,
+                        'Industry': getattr(score, 'industry', '') or '',
                         'Website': getattr(score, 'website', '') or '',
                         'Unified Score': score.unified_score,
                         'Recommendation': score.recommendation,
+                        'Confidence': getattr(score, 'confidence', 'LOW'),
                         'Ten Bagger Score': score.ten_bagger_score,
                         'RS Rating': score.rs_rating,
+                        'RS Trend': getattr(score, 'rs_trend', 'STABLE'),
                         'Deep Bottom Score': score.deep_bottom_score,
                         'Fundamental Score': score.fundamental_score,
                         'Price': score.current_price,
+                        '30D Return %': getattr(score, 'return_30d', 0) or 0,
                         'Drawdown %': score.drawdown_pct,
+                        '52W High': getattr(score, 'week_52_high', 0) or 0,
+                        '52W Low': getattr(score, 'week_52_low', 0) or 0,
+                        'Market Cap': getattr(score, 'market_cap', None),
+                        'P/E Ratio': getattr(score, 'pe_ratio', None),
+                        'Forward P/E': getattr(score, 'forward_pe', None),
+                        'Dividend Yield %': (getattr(score, 'dividend_yield', None) or 0) * 100 if getattr(score, 'dividend_yield', None) else None,
+                        'Beta': getattr(score, 'beta', None),
+                        'Revenue Growth %': (getattr(score, 'revenue_growth', None) or 0) * 100 if getattr(score, 'revenue_growth', None) else None,
+                        'Profit Margin %': (getattr(score, 'profit_margin', None) or 0) * 100 if getattr(score, 'profit_margin', None) else None,
                         'Sector': score.sector or 'N/A'
                     })
                 create_export_buttons(export_data, filename_prefix="screening_results")

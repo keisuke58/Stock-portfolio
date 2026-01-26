@@ -19,6 +19,7 @@ class UnifiedScore:
     # Company Info
     company_name: str = ""
     website: str = ""
+    industry: str = ""
 
     # Overall
     unified_score: float = 0.0  # 0-100 master score
@@ -56,6 +57,19 @@ class UnifiedScore:
     ath_ratio: float = 1.0
     drawdown_pct: float = 0.0
     return_30d: float = 0.0
+    week_52_high: float = 0.0
+    week_52_low: float = 0.0
+
+    # Financial metrics
+    market_cap: Optional[float] = None
+    pe_ratio: Optional[float] = None
+    forward_pe: Optional[float] = None
+    peg_ratio: Optional[float] = None
+    dividend_yield: Optional[float] = None
+    beta: Optional[float] = None
+    revenue_growth: Optional[float] = None
+    profit_margin: Optional[float] = None
+    roe: Optional[float] = None
 
     # Signals
     current_state: str = "NORMAL"
@@ -187,12 +201,35 @@ class UnifiedScreener:
         return None
 
     def _fetch_company_info(self, score: UnifiedScore, symbol: str) -> UnifiedScore:
-        """Fetch company name and website."""
+        """Fetch company name, website, and financial metrics."""
         if not self.stock_fetcher:
             return score
 
         try:
-            # Try get_company_info first
+            # Try get_fundamental_data for comprehensive info
+            if hasattr(self.stock_fetcher, 'get_fundamental_data'):
+                data = self.stock_fetcher.get_fundamental_data(symbol)
+                if data:
+                    # Company info
+                    score.company_name = data.get('company_name', '') or symbol
+                    score.website = data.get('website', '') or ''
+                    if not score.sector and data.get('sector'):
+                        score.sector = data.get('sector')
+                    score.industry = data.get('industry', '') or ''
+
+                    # Financial metrics
+                    score.market_cap = data.get('market_cap')
+                    score.pe_ratio = data.get('pe_ratio')
+                    score.forward_pe = data.get('forward_pe')
+                    score.dividend_yield = data.get('dividend_yield')
+                    score.beta = data.get('beta')
+                    score.revenue_growth = data.get('revenue_growth')
+                    score.profit_margin = data.get('profit_margin')
+                    score.roe = data.get('roe')
+
+                    return score
+
+            # Fallback to get_company_info
             if hasattr(self.stock_fetcher, 'get_company_info'):
                 info = self.stock_fetcher.get_company_info(symbol)
                 if info:
@@ -200,16 +237,7 @@ class UnifiedScreener:
                     score.website = info.get('website', '') or ''
                     if not score.sector and info.get('sector'):
                         score.sector = info.get('sector')
-                    return score
-
-            # Fallback to get_fundamental_data
-            if hasattr(self.stock_fetcher, 'get_fundamental_data'):
-                data = self.stock_fetcher.get_fundamental_data(symbol)
-                if data:
-                    score.company_name = data.get('company_name', '') or symbol
-                    score.website = data.get('website', '') or ''
-                    if not score.sector and data.get('sector'):
-                        score.sector = data.get('sector')
+                    score.industry = info.get('industry', '') or ''
                     return score
 
         except Exception as e:
@@ -288,6 +316,11 @@ class UnifiedScreener:
             ath = close.max()
             score.ath_ratio = score.current_price / ath if ath > 0 else 1.0
             score.drawdown_pct = (1 - score.ath_ratio) * 100
+
+            # 52-week high/low (use available data, up to 252 trading days)
+            week_52_data = close.iloc[-252:] if len(close) >= 252 else close
+            score.week_52_high = float(week_52_data.max())
+            score.week_52_low = float(week_52_data.min())
 
             # 30-day return
             if len(close) >= 30:
