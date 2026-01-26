@@ -385,7 +385,7 @@ def run_unified_screening(symbols: List[str] = None) -> Optional[Dict]:
     """Run unified screening on stock universe."""
     try:
         from screeners.unified_screener import UnifiedScreener, DEFAULT_SCREENING_UNIVERSE
-        from api.yahoo_fetcher import YahooFetcher
+        from fetchers import YahooFetcher
 
         if symbols is None:
             symbols = DEFAULT_SCREENING_UNIVERSE
@@ -395,8 +395,13 @@ def run_unified_screening(symbols: List[str] = None) -> Optional[Dict]:
 
         return screener.get_top_recommendations(symbols, top_n=10)
 
+    except ImportError as e:
+        st.error(f"Import error: {e}. Make sure all dependencies are installed.")
+        return None
     except Exception as e:
         st.error(f"Screening error: {e}")
+        import traceback
+        st.code(traceback.format_exc())
         return None
 
 

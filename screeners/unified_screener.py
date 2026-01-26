@@ -155,6 +155,33 @@ class UnifiedScreener:
                 logger.warning("FeatureCalculator not available")
         return self._feature_calculator
 
+    def _fetch_price_data(self, symbol: str) -> Optional[pd.DataFrame]:
+        """Fetch price data from stock fetcher and convert to DataFrame."""
+        if not self.stock_fetcher:
+            return None
+
+        try:
+            # Try get_historical_prices_with_volume first (returns list of tuples)
+            if hasattr(self.stock_fetcher, 'get_historical_prices_with_volume'):
+                data = self.stock_fetcher.get_historical_prices_with_volume(symbol, days=365)
+                if data:
+                    df = pd.DataFrame(data, columns=['Date', 'Close', 'Volume'])
+                    df.set_index('Date', inplace=True)
+                    return df
+
+            # Fallback to get_historical_prices
+            if hasattr(self.stock_fetcher, 'get_historical_prices'):
+                data = self.stock_fetcher.get_historical_prices(symbol, days=365)
+                if data:
+                    df = pd.DataFrame(data, columns=['Date', 'Close'])
+                    df.set_index('Date', inplace=True)
+                    return df
+
+        except Exception as e:
+            logger.debug(f"Error fetching price data for {symbol}: {e}")
+
+        return None
+
     def screen_stock(self, symbol: str, price_data: pd.DataFrame = None) -> UnifiedScore:
         """
         Screen a single stock from all perspectives.
@@ -170,13 +197,22 @@ class UnifiedScreener:
 
         try:
             # Fetch price data if not provided
-            if price_data is None and self.stock_fetcher:
-                price_data = self.stock_fetcher.get_stock_data(symbol, period='1y')
+            if price_data is None:
+                price_data = self._fetch_price_data(symbol)
 
             if price_data is not None and not price_data.empty:
                 score = self._calculate_price_metrics(score, price_data)
+            else:
+                # Fallback: try to get at least current price
+                if self.stock_fetcher and hasattr(self.stock_fetcher, 'get_current_price'):
+                    try:
+                        price = self.stock_fetcher.get_current_price(symbol)
+                        if price:
+                            score.current_price = price
+                    except Exception:
+                        pass
 
-            # Ten Bagger analysis
+            # Ten Bagger analysis (may also set current_price)
             score = self._calculate_ten_bagger(score, symbol)
 
             # Relative Strength analysis
@@ -233,6 +269,18 @@ class UnifiedScreener:
                     score.profitability_score = tb_score.profitability_score
                     score.valuation_score = tb_score.valuation_score
                     score.sector = tb_score.sector
+
+                    # Get current_price from metrics if not already set
+                    if score.current_price == 0 and tb_score.metrics:
+                        price = tb_score.metrics.get('current_price')
+                        if price:
+                            score.current_price = price
+
+                    # Get RS data if available
+                    if tb_score.rs_rating:
+                        score.rs_rating = tb_score.rs_rating
+                    if tb_score.rs_trend:
+                        score.rs_trend = tb_score.rs_trend
 
                     if tb_score.key_strengths:
                         score.key_signals.extend(tb_score.key_strengths[:3])

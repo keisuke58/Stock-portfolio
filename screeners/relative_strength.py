@@ -70,8 +70,8 @@ class RelativeStrengthCalculator:
         'PEP', 'COST', 'TMO', 'AVGO', 'CSCO', 'WMT', 'DIS', 'VZ', 'ADBE',
         'ACN', 'NFLX', 'CRM', 'AMD', 'INTC', 'QCOM', 'TXN', 'HON', 'IBM',
         # Growth stocks
-        'CRWD', 'SNOW', 'DDOG', 'NET', 'ZS', 'PANW', 'NOW', 'SHOP', 'SQ',
-        'COIN', 'MELI', 'SE', 'ROKU', 'RBLX', 'U', 'PATH', 'MDB', 'TEAM',
+        'CRWD', 'SNOW', 'DDOG', 'NET', 'ZS', 'PANW', 'NOW', 'SHOP',
+        'COIN', 'MELI', 'ROKU', 'RBLX', 'U', 'PATH', 'MDB', 'TEAM', 'PLTR',
         # Semiconductors
         'TSM', 'ASML', 'LRCX', 'AMAT', 'KLAC', 'MRVL', 'MU', 'ADI', 'NXPI',
         # Healthcare
