@@ -39,7 +39,8 @@ def inject_custom_css():
 
     /* Main header styling */
     .main-title {
-        background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 50%, var(--accent-pink) 100%);
+        color: #4cc9f0;  /* Fallback color */
+        background: linear-gradient(135deg, #4361ee 0%, #7209b7 50%, #f72585 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -87,7 +88,8 @@ def inject_custom_css():
     .metric-value {
         font-size: 2rem;
         font-weight: 700;
-        background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-blue) 100%);
+        color: #4cc9f0;  /* Fallback - cyan */
+        background: linear-gradient(135deg, #4cc9f0 0%, #4361ee 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -95,7 +97,7 @@ def inject_custom_css():
 
     .metric-label {
         font-size: 0.85rem;
-        color: var(--text-secondary);
+        color: #e0e0e0;  /* Lighter gray for better readability */
         text-transform: uppercase;
         letter-spacing: 1px;
         margin-top: 0.5rem;
@@ -143,7 +145,7 @@ def inject_custom_css():
     .rec-symbol {
         font-size: 1.1rem;
         font-weight: 700;
-        color: var(--text-primary);
+        color: #ffffff;  /* White text for symbol */
         display: flex;
         align-items: center;
         gap: 0.5rem;
@@ -152,7 +154,7 @@ def inject_custom_css():
     .rec-score {
         font-size: 1.75rem;
         font-weight: 800;
-        color: var(--accent-cyan);
+        color: #4cc9f0;  /* Cyan - highly visible */
         margin: 0.25rem 0;
     }
 
@@ -160,7 +162,7 @@ def inject_custom_css():
         display: flex;
         justify-content: space-between;
         font-size: 0.8rem;
-        color: var(--text-secondary);
+        color: #d0d0d0;  /* Light gray for details */
     }
 
     /* Recommendation badge */
@@ -174,32 +176,32 @@ def inject_custom_css():
     }
 
     .rec-badge.strong-buy {
-        background: linear-gradient(135deg, var(--accent-green), var(--accent-cyan));
-        color: #000;
+        background: linear-gradient(135deg, #06d6a0, #4cc9f0);
+        color: #000000;  /* Black text on bright gradient */
     }
 
     .rec-badge.buy {
         background: rgba(76, 201, 240, 0.3);
-        color: var(--accent-cyan);
-        border: 1px solid var(--accent-cyan);
+        color: #4cc9f0;  /* Cyan */
+        border: 1px solid #4cc9f0;
     }
 
     .rec-badge.hold {
         background: rgba(255, 214, 10, 0.2);
-        color: var(--accent-yellow);
-        border: 1px solid var(--accent-yellow);
+        color: #ffd60a;  /* Yellow */
+        border: 1px solid #ffd60a;
     }
 
     .rec-badge.watch {
         background: rgba(255, 149, 0, 0.2);
-        color: var(--accent-orange);
-        border: 1px solid var(--accent-orange);
+        color: #ff9500;  /* Orange */
+        border: 1px solid #ff9500;
     }
 
     .rec-badge.avoid {
         background: rgba(239, 71, 111, 0.2);
-        color: var(--accent-red);
-        border: 1px solid var(--accent-red);
+        color: #ef476f;  /* Red */
+        border: 1px solid #ef476f;
     }
 
     /* Rank badge */
@@ -207,8 +209,8 @@ def inject_custom_css():
         position: absolute;
         top: -5px;
         right: 10px;
-        background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-pink) 100%);
-        color: white;
+        background: linear-gradient(135deg, #7209b7 0%, #f72585 100%);
+        color: #ffffff;  /* White text */
         font-size: 0.7rem;
         font-weight: 700;
         padding: 0.25rem 0.5rem;
@@ -222,9 +224,9 @@ def inject_custom_css():
         border-radius: 12px;
         font-size: 0.65rem;
         font-weight: 600;
-        background: var(--glass-bg);
-        border: 1px solid var(--glass-border);
-        color: var(--text-secondary);
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #c0c0c0;  /* Light gray */
         margin-right: 0.25rem;
     }
 
@@ -235,8 +237,8 @@ def inject_custom_css():
         border-radius: 8px;
         font-size: 0.6rem;
         font-weight: 500;
-        background: rgba(67, 97, 238, 0.2);
-        color: var(--accent-blue);
+        background: rgba(67, 97, 238, 0.3);
+        color: #7c9aff;  /* Light blue - readable */
         margin: 0.1rem;
     }
 
@@ -244,10 +246,10 @@ def inject_custom_css():
     .section-header {
         font-size: 1.25rem;
         font-weight: 600;
-        color: var(--text-primary);
+        color: #ffffff;  /* White for section headers */
         margin: 1.5rem 0 1rem 0;
         padding-bottom: 0.5rem;
-        border-bottom: 2px solid var(--glass-border);
+        border-bottom: 2px solid rgba(255, 255, 255, 0.15);
         display: flex;
         align-items: center;
         gap: 0.5rem;
@@ -257,7 +259,7 @@ def inject_custom_css():
     .sub-header {
         font-size: 1rem;
         font-weight: 600;
-        color: var(--accent-cyan);
+        color: #4cc9f0;  /* Cyan for sub-headers */
         margin: 1rem 0 0.75rem 0;
         display: flex;
         align-items: center;
@@ -266,7 +268,7 @@ def inject_custom_css():
 
     /* Stats bar */
     .stats-container {
-        background: var(--glass-bg);
+        background: rgba(255, 255, 255, 0.05);
         border-radius: 12px;
         padding: 1rem;
         margin-bottom: 0.5rem;
@@ -277,7 +279,7 @@ def inject_custom_css():
         justify-content: space-between;
         align-items: center;
         padding: 0.5rem 0;
-        border-bottom: 1px solid var(--glass-border);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
     .stats-row:last-child {
@@ -285,18 +287,18 @@ def inject_custom_css():
     }
 
     .stats-label {
-        color: var(--text-secondary);
+        color: #c0c0c0;  /* Light gray for labels */
         font-size: 0.85rem;
     }
 
     .stats-value {
-        color: var(--text-primary);
+        color: #ffffff;  /* White for values */
         font-weight: 600;
     }
 
     .stats-bar {
         height: 6px;
-        background: var(--bg-secondary);
+        background: #1a1a2e;
         border-radius: 3px;
         overflow: hidden;
         margin-top: 0.25rem;
@@ -308,15 +310,15 @@ def inject_custom_css():
         transition: width 0.5s ease;
     }
 
-    .stats-bar-fill.excellent { background: linear-gradient(90deg, var(--accent-green), var(--accent-cyan)); }
-    .stats-bar-fill.good { background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); }
-    .stats-bar-fill.average { background: linear-gradient(90deg, var(--accent-yellow), #ff9500); }
-    .stats-bar-fill.below { background: linear-gradient(90deg, var(--accent-red), var(--accent-pink)); }
+    .stats-bar-fill.excellent { background: linear-gradient(90deg, #06d6a0, #4cc9f0); }
+    .stats-bar-fill.good { background: linear-gradient(90deg, #4361ee, #7209b7); }
+    .stats-bar-fill.average { background: linear-gradient(90deg, #ffd60a, #ff9500); }
+    .stats-bar-fill.below { background: linear-gradient(90deg, #ef476f, #f72585); }
 
     /* Divider */
     .styled-divider {
         height: 1px;
-        background: linear-gradient(90deg, transparent, var(--glass-border), transparent);
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
         margin: 2rem 0;
     }
 
@@ -331,24 +333,25 @@ def inject_custom_css():
         flex: 1;
         text-align: center;
         padding: 0.25rem;
-        background: var(--glass-bg);
+        background: rgba(255, 255, 255, 0.08);
         border-radius: 6px;
         font-size: 0.65rem;
     }
 
     .score-mini-value {
         font-weight: 700;
-        color: var(--accent-cyan);
+        color: #4cc9f0;  /* Cyan for score values */
     }
 
     .score-mini-label {
-        color: var(--text-secondary);
+        color: #a0a0a0;  /* Gray for labels */
         font-size: 0.55rem;
     }
 
     /* Screening progress */
     .screening-status {
-        background: var(--glass-bg);
+        background: rgba(6, 214, 160, 0.1);
+        border: 1px solid rgba(6, 214, 160, 0.3);
         border-radius: 8px;
         padding: 0.75rem 1rem;
         display: flex;
@@ -367,12 +370,12 @@ def inject_custom_css():
 
     .screening-status-title {
         font-weight: 600;
-        color: var(--text-primary);
+        color: #ffffff;  /* White for title */
     }
 
     .screening-status-detail {
         font-size: 0.8rem;
-        color: var(--text-secondary);
+        color: #c0c0c0;  /* Light gray for details */
     }
     </style>
     """, unsafe_allow_html=True)
