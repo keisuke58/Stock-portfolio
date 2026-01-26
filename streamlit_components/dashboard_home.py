@@ -381,7 +381,7 @@ def inject_custom_css():
     """, unsafe_allow_html=True)
 
 
-def run_unified_screening(symbols: List[str] = None) -> Optional[Dict]:
+def run_unified_screening(symbols: List[str] = None, top_n: int = 20, max_workers: int = 5) -> Optional[Dict]:
     """Run unified screening on stock universe."""
     try:
         from screeners.unified_screener import UnifiedScreener, DEFAULT_SCREENING_UNIVERSE
@@ -393,7 +393,20 @@ def run_unified_screening(symbols: List[str] = None) -> Optional[Dict]:
         fetcher = YahooFetcher()
         screener = UnifiedScreener(fetcher)
 
-        return screener.get_top_recommendations(symbols, top_n=10)
+        # Screen with parallel workers
+        result = screener.screen_universe(symbols, max_workers=max_workers, top_n=top_n)
+
+        # Convert to dict format expected by UI
+        return {
+            'overall': result.all_scores[:top_n],
+            'growth': result.ten_bagger_candidates[:top_n],
+            'momentum': result.momentum_leaders[:top_n],
+            'value': result.deep_value_plays[:top_n],
+            'recovery': result.recovery_candidates[:top_n],
+            'strong_buys': result.strong_buys[:top_n],
+            'total_screened': result.total_screened,
+            'timestamp': result.timestamp
+        }
 
     except ImportError as e:
         st.error(f"Import error: {e}. Make sure all dependencies are installed.")
@@ -458,62 +471,183 @@ def render_recommendation_card(score, rank: int, category: str = "overall"):
     """, unsafe_allow_html=True)
 
 
+def get_large_universe():
+    """Get large stock universe (200+ stocks)."""
+    return [
+        # Mega Cap Tech
+        'AAPL', 'MSFT', 'GOOGL', 'GOOG', 'AMZN', 'META', 'NVDA', 'TSLA', 'BRK-B',
+        # Large Cap Tech
+        'AVGO', 'ORCL', 'ADBE', 'CRM', 'AMD', 'INTC', 'QCOM', 'TXN', 'IBM', 'CSCO',
+        'NOW', 'INTU', 'AMAT', 'ADI', 'LRCX', 'MU', 'KLAC', 'MRVL', 'SNPS', 'CDNS',
+        # Software & Cloud
+        'SNOW', 'DDOG', 'NET', 'ZS', 'CRWD', 'PANW', 'OKTA', 'MDB', 'TEAM', 'HUBS',
+        'SPLK', 'WDAY', 'VEEV', 'DOCU', 'ZM', 'TWLO', 'BILL', 'CFLT', 'GTLB', 'PATH',
+        # E-commerce & Internet
+        'SHOP', 'MELI', 'BKNG', 'ABNB', 'UBER', 'LYFT', 'DASH', 'ETSY', 'EBAY', 'W',
+        'PYPL', 'COIN', 'AFRM', 'SOFI', 'HOOD', 'SQ', 'UPST', 'LMND',
+        # Semiconductors
+        'TSM', 'ASML', 'ARM', 'SMCI', 'ON', 'NXPI', 'MPWR', 'SWKS', 'QRVO', 'MCHP',
+        # AI & Data
+        'PLTR', 'AI', 'IONQ', 'RGTI', 'S', 'U', 'RBLX', 'TTWO', 'EA', 'MTCH',
+        # Healthcare & Biotech
+        'UNH', 'JNJ', 'LLY', 'PFE', 'ABBV', 'MRK', 'TMO', 'DHR', 'ABT', 'BMY',
+        'AMGN', 'GILD', 'VRTX', 'REGN', 'MRNA', 'BNTX', 'ISRG', 'DXCM', 'IDXX', 'IQV',
+        'ZTS', 'SYK', 'BDX', 'MDT', 'EW', 'A', 'BSX', 'HCA', 'CI', 'ELV',
+        # Financials
+        'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'SCHW', 'AXP', 'COF',
+        'V', 'MA', 'SPGI', 'MCO', 'ICE', 'CME', 'NDAQ', 'MSCI', 'FIS', 'FISV',
+        'PNC', 'USB', 'TFC', 'AIG', 'MET', 'PRU', 'AFL', 'ALL', 'TRV', 'PGR',
+        # Consumer
+        'WMT', 'COST', 'TGT', 'HD', 'LOW', 'NKE', 'SBUX', 'MCD', 'DIS', 'NFLX',
+        'CMCSA', 'T', 'VZ', 'TMUS', 'CHTR', 'KO', 'PEP', 'PM', 'MO', 'MDLZ',
+        'CL', 'PG', 'KMB', 'EL', 'CLX', 'KHC', 'GIS', 'K', 'CPB', 'SJM',
+        'DG', 'DLTR', 'ROST', 'TJX', 'ORLY', 'AZO', 'BBY', 'GPS', 'KSS', 'M',
+        'CMG', 'YUM', 'DPZ', 'QSR', 'WING', 'CAVA', 'SHAK', 'BROS',
+        # Industrials
+        'CAT', 'DE', 'BA', 'RTX', 'LMT', 'NOC', 'GD', 'GE', 'HON', 'MMM',
+        'UPS', 'FDX', 'UNP', 'CSX', 'NSC', 'ODFL', 'JBHT', 'XPO', 'CHRW',
+        'WM', 'RSG', 'FAST', 'PAYX', 'ADP', 'CTAS', 'ROK', 'EMR', 'ETN', 'ITW',
+        # Energy
+        'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'OXY', 'PSX', 'VLO', 'MPC', 'PXD',
+        'DVN', 'FANG', 'HAL', 'BKR', 'KMI', 'WMB', 'OKE', 'TRGP', 'LNG', 'ET',
+        # Materials
+        'LIN', 'APD', 'SHW', 'ECL', 'DD', 'DOW', 'NEM', 'FCX', 'NUE', 'STLD',
+        # REITs
+        'AMT', 'PLD', 'CCI', 'EQIX', 'PSA', 'DLR', 'O', 'WELL', 'SPG', 'VICI',
+        # Speculative Growth
+        'RKLB', 'ASTS', 'LUNR', 'RDW', 'ACHR', 'JOBY', 'LILM', 'EVTL',
+        'RIVN', 'LCID', 'FSR', 'GOEV', 'RIDE', 'WKHS', 'HYLN', 'XOS',
+    ]
+
+
+def get_sp500_top100():
+    """Get S&P 500 top 100 by market cap."""
+    return [
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK-B', 'UNH', 'JNJ',
+        'JPM', 'V', 'XOM', 'PG', 'MA', 'HD', 'CVX', 'MRK', 'ABBV', 'LLY',
+        'PEP', 'COST', 'AVGO', 'KO', 'TMO', 'CSCO', 'WMT', 'MCD', 'ACN', 'ABT',
+        'CRM', 'DHR', 'BAC', 'ADBE', 'PFE', 'NKE', 'AMD', 'DIS', 'CMCSA', 'TXN',
+        'VZ', 'NFLX', 'PM', 'INTC', 'WFC', 'NEE', 'RTX', 'HON', 'T', 'QCOM',
+        'COP', 'LOW', 'ORCL', 'UPS', 'BMY', 'MS', 'INTU', 'UNP', 'SPGI', 'ELV',
+        'CAT', 'IBM', 'BA', 'GE', 'AMGN', 'DE', 'GS', 'SBUX', 'NOW', 'ISRG',
+        'AMAT', 'BLK', 'GILD', 'AXP', 'PLD', 'SYK', 'MDLZ', 'ADI', 'TJX', 'VRTX',
+        'ADP', 'BKNG', 'LMT', 'MMC', 'C', 'CVS', 'CI', 'REGN', 'SCHW', 'MO',
+        'CB', 'ETN', 'TMUS', 'ZTS', 'LRCX', 'EOG', 'SO', 'DUK', 'BSX', 'BDX',
+    ]
+
+
 def render_screening_section():
     """Render the comprehensive screening section."""
     st.markdown('<div class="section-header">🎯 Smart Stock Screening</div>', unsafe_allow_html=True)
 
-    # Screening options
-    col1, col2 = st.columns([3, 1])
+    # Screening options in expander for cleaner UI
+    with st.expander("⚙️ Screening Settings", expanded=True):
+        col1, col2, col3 = st.columns([2, 1, 1])
 
-    with col1:
-        screening_mode = st.selectbox(
-            "Screening Universe",
-            ["Default Universe (70 stocks)", "Custom Symbols", "Tech Focus", "Value Focus"],
-            key="screening_mode"
-        )
+        with col1:
+            screening_mode = st.selectbox(
+                "Universe",
+                [
+                    "Large Universe (200+ stocks)",
+                    "S&P 500 Top 100",
+                    "Default (70 stocks)",
+                    "Tech & Growth (50 stocks)",
+                    "Value & Dividend (40 stocks)",
+                    "Semiconductors (30 stocks)",
+                    "Custom Symbols"
+                ],
+                key="screening_mode"
+            )
 
-    with col2:
-        run_screening = st.button("🔍 Run Screening", use_container_width=True, type="primary")
+        with col2:
+            top_n = st.selectbox(
+                "Show Top N",
+                [10, 20, 30, 50, 100],
+                index=1,
+                key="top_n_results"
+            )
+
+        with col3:
+            max_workers = st.selectbox(
+                "Speed",
+                [("Fast (3)", 3), ("Normal (5)", 5), ("Thorough (10)", 10)],
+                index=1,
+                format_func=lambda x: x[0],
+                key="max_workers"
+            )[1]
 
     custom_symbols = None
     if screening_mode == "Custom Symbols":
-        custom_input = st.text_input(
-            "Enter symbols (comma-separated)",
-            placeholder="AAPL, MSFT, GOOGL, NVDA..."
+        custom_input = st.text_area(
+            "Enter symbols (comma or space separated)",
+            placeholder="AAPL, MSFT, GOOGL, NVDA, AMD, TSLA...",
+            height=100
         )
         if custom_input:
-            custom_symbols = [s.strip().upper() for s in custom_input.split(',')]
+            # Support comma, space, newline separated
+            import re
+            custom_symbols = [s.strip().upper() for s in re.split(r'[,\s\n]+', custom_input) if s.strip()]
+            st.info(f"Found {len(custom_symbols)} symbols")
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        run_screening = st.button("🔍 Run Screening", use_container_width=True, type="primary")
+    with col2:
+        if st.button("🗑️ Clear Results", use_container_width=True):
+            st.session_state['screening_results'] = None
+            st.rerun()
 
     if run_screening or st.session_state.get('screening_results') is not None:
         if run_screening:
-            with st.spinner("🔄 Analyzing stocks from all perspectives..."):
-                # Determine symbols based on mode
-                if screening_mode == "Tech Focus":
-                    symbols = [
-                        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA',
-                        'AMD', 'AVGO', 'QCOM', 'CRM', 'NOW', 'SNOW', 'NET',
-                        'DDOG', 'ZS', 'CRWD', 'PANW', 'SHOP', 'PLTR', 'AI'
-                    ]
-                elif screening_mode == "Value Focus":
-                    symbols = [
-                        'JPM', 'BAC', 'GS', 'V', 'MA', 'JNJ', 'PFE', 'ABBV',
-                        'XOM', 'CVX', 'CAT', 'DE', 'WMT', 'COST', 'TGT',
-                        'DIS', 'NKE', 'SBUX', 'MCD', 'KO', 'PEP'
-                    ]
-                elif custom_symbols:
-                    symbols = custom_symbols
-                else:
-                    symbols = None  # Use default
+            # Determine symbols based on mode
+            if screening_mode == "Large Universe (200+ stocks)":
+                symbols = get_large_universe()
+            elif screening_mode == "S&P 500 Top 100":
+                symbols = get_sp500_top100()
+            elif screening_mode == "Tech & Growth (50 stocks)":
+                symbols = [
+                    'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA', 'AMD', 'AVGO', 'QCOM',
+                    'CRM', 'NOW', 'ADBE', 'INTU', 'SNOW', 'DDOG', 'NET', 'ZS', 'CRWD', 'PANW',
+                    'SHOP', 'MELI', 'COIN', 'PLTR', 'AI', 'PATH', 'U', 'RBLX', 'MDB', 'TEAM',
+                    'ARM', 'SMCI', 'IONQ', 'AMAT', 'LRCX', 'KLAC', 'MRVL', 'ON', 'NXPI', 'MPWR',
+                    'UBER', 'ABNB', 'DASH', 'BKNG', 'NFLX', 'ROKU', 'TTWO', 'EA', 'MTCH', 'ETSY'
+                ]
+            elif screening_mode == "Value & Dividend (40 stocks)":
+                symbols = [
+                    'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'V', 'MA', 'AXP', 'BLK',
+                    'JNJ', 'PFE', 'ABBV', 'MRK', 'BMY', 'AMGN', 'GILD',
+                    'XOM', 'CVX', 'COP', 'EOG', 'SLB', 'PSX', 'VLO', 'MPC',
+                    'WMT', 'COST', 'TGT', 'HD', 'LOW', 'KO', 'PEP', 'PG', 'CL',
+                    'CAT', 'DE', 'HON', 'MMM', 'UPS', 'UNP'
+                ]
+            elif screening_mode == "Semiconductors (30 stocks)":
+                symbols = [
+                    'NVDA', 'AMD', 'AVGO', 'QCOM', 'TXN', 'INTC', 'MU', 'AMAT', 'LRCX', 'KLAC',
+                    'MRVL', 'ADI', 'NXPI', 'ON', 'MPWR', 'SWKS', 'QRVO', 'MCHP', 'SNPS', 'CDNS',
+                    'TSM', 'ASML', 'ARM', 'SMCI', 'WOLF', 'CRUS', 'SLAB', 'DIOD', 'SITM', 'ACLS'
+                ]
+            elif custom_symbols:
+                symbols = custom_symbols
+            else:
+                symbols = None  # Use default
 
-                results = run_unified_screening(symbols)
+            # Show progress
+            if symbols:
+                st.info(f"🔄 Screening {len(symbols)} stocks...")
+
+            with st.spinner(f"Analyzing stocks from all perspectives (this may take a moment)..."):
+                results = run_unified_screening(symbols, top_n=top_n, max_workers=max_workers)
                 st.session_state['screening_results'] = results
 
         results = st.session_state.get('screening_results')
 
         if results:
             # Display screening status
-            total_screened = len(results.get('overall', []))
+            total_screened = results.get('total_screened', len(results.get('overall', [])))
             strong_buys = len(results.get('strong_buys', []))
+            top_results = len(results.get('overall', []))
+            growth_candidates = len(results.get('growth', []))
+            momentum_leaders = len(results.get('momentum', []))
 
             st.markdown(f"""
             <div class="screening-status">
@@ -521,75 +655,124 @@ def render_screening_section():
                 <div class="screening-status-text">
                     <div class="screening-status-title">Screening Complete</div>
                     <div class="screening-status-detail">
-                        Analyzed {total_screened} stocks • Found {strong_buys} Strong Buy signals
+                        Analyzed {total_screened} stocks • Top {top_results} shown • {strong_buys} Strong Buys • {growth_candidates} Growth • {momentum_leaders} Momentum Leaders
                     </div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
             # Create tabs for different perspectives
-            tab1, tab2, tab3, tab4, tab5 = st.tabs([
-                "🏆 Top Overall",
-                "🚀 Growth (10-Bagger)",
-                "📈 Momentum Leaders",
-                "💎 Deep Value",
-                "🔄 Recovery Plays"
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+                f"🏆 Top Overall ({len(results.get('overall', []))})",
+                f"🚀 Growth ({len(results.get('growth', []))})",
+                f"📈 Momentum ({len(results.get('momentum', []))})",
+                f"💎 Deep Value ({len(results.get('value', []))})",
+                f"🔄 Recovery ({len(results.get('recovery', []))})",
+                "📊 Full Table"
             ])
 
-            with tab1:
-                st.markdown('<div class="sub-header">🏆 Top Recommendations by Unified Score</div>', unsafe_allow_html=True)
-                overall = results.get('overall', [])
-                if overall:
-                    cols = st.columns(2)
-                    for idx, score in enumerate(overall[:10]):
-                        with cols[idx % 2]:
-                            render_recommendation_card(score, idx + 1, "overall")
+            def render_category_results(data_list, category_name, description):
+                """Render results for a category with pagination."""
+                if not data_list:
+                    st.info(f"No {category_name.lower()} found")
+                    return
+
+                st.markdown(f'<div class="sub-header">{description}</div>', unsafe_allow_html=True)
+
+                # Show count
+                st.caption(f"Found {len(data_list)} stocks")
+
+                # Pagination
+                items_per_page = 20
+                total_pages = (len(data_list) - 1) // items_per_page + 1
+
+                if total_pages > 1:
+                    page = st.selectbox(f"Page", range(1, total_pages + 1), key=f"page_{category_name}")
                 else:
-                    st.info("No recommendations available")
+                    page = 1
+
+                start_idx = (page - 1) * items_per_page
+                end_idx = min(start_idx + items_per_page, len(data_list))
+                page_data = data_list[start_idx:end_idx]
+
+                cols = st.columns(2)
+                for idx, score in enumerate(page_data):
+                    with cols[idx % 2]:
+                        render_recommendation_card(score, start_idx + idx + 1, category_name)
+
+            with tab1:
+                render_category_results(
+                    results.get('overall', []),
+                    "overall",
+                    "🏆 Top Recommendations by Unified Score"
+                )
 
             with tab2:
-                st.markdown('<div class="sub-header">🚀 Ten Bagger Candidates (High Growth Potential)</div>', unsafe_allow_html=True)
-                growth = results.get('growth', [])
-                if growth:
-                    cols = st.columns(2)
-                    for idx, score in enumerate(growth[:10]):
-                        with cols[idx % 2]:
-                            render_recommendation_card(score, idx + 1, "growth")
-                else:
-                    st.info("No growth candidates found")
+                render_category_results(
+                    results.get('growth', []),
+                    "growth",
+                    "🚀 Ten Bagger Candidates (High Growth Potential)"
+                )
 
             with tab3:
-                st.markdown('<div class="sub-header">📈 Momentum Leaders (High Relative Strength)</div>', unsafe_allow_html=True)
-                momentum = results.get('momentum', [])
-                if momentum:
-                    cols = st.columns(2)
-                    for idx, score in enumerate(momentum[:10]):
-                        with cols[idx % 2]:
-                            render_recommendation_card(score, idx + 1, "momentum")
-                else:
-                    st.info("No momentum leaders found")
+                render_category_results(
+                    results.get('momentum', []),
+                    "momentum",
+                    "📈 Momentum Leaders (High Relative Strength)"
+                )
 
             with tab4:
-                st.markdown('<div class="sub-header">💎 Deep Value Plays (Significant Drawdown + Strong Fundamentals)</div>', unsafe_allow_html=True)
-                value = results.get('value', [])
-                if value:
-                    cols = st.columns(2)
-                    for idx, score in enumerate(value[:10]):
-                        with cols[idx % 2]:
-                            render_recommendation_card(score, idx + 1, "value")
-                else:
-                    st.info("No deep value plays found")
+                render_category_results(
+                    results.get('value', []),
+                    "value",
+                    "💎 Deep Value Plays (Significant Drawdown + Strong Fundamentals)"
+                )
 
             with tab5:
-                st.markdown('<div class="sub-header">🔄 Recovery Candidates (Bottom Formation + Improving Momentum)</div>', unsafe_allow_html=True)
-                recovery = results.get('recovery', [])
-                if recovery:
-                    cols = st.columns(2)
-                    for idx, score in enumerate(recovery[:10]):
-                        with cols[idx % 2]:
-                            render_recommendation_card(score, idx + 1, "recovery")
+                render_category_results(
+                    results.get('recovery', []),
+                    "recovery",
+                    "🔄 Recovery Candidates (Bottom Formation + Improving Momentum)"
+                )
+
+            with tab6:
+                st.markdown('<div class="sub-header">📊 Full Screening Results Table</div>', unsafe_allow_html=True)
+                overall = results.get('overall', [])
+                if overall:
+                    # Create DataFrame for table view
+                    table_data = []
+                    for idx, score in enumerate(overall):
+                        table_data.append({
+                            'Rank': idx + 1,
+                            'Symbol': score.symbol,
+                            'Score': round(score.unified_score, 1),
+                            'Rec': score.recommendation,
+                            '10-Bag': round(score.ten_bagger_score, 0),
+                            'RS': score.rs_rating,
+                            'Value': round(score.deep_bottom_score, 0),
+                            'Fund': round(score.fundamental_score, 0),
+                            'Price': f"${score.current_price:,.2f}" if score.current_price else "N/A",
+                            'Drawdown': f"{score.drawdown_pct:.1f}%",
+                            'Sector': score.sector or "N/A"
+                        })
+
+                    df = pd.DataFrame(table_data)
+
+                    # Color code recommendations
+                    def color_rec(val):
+                        colors = {
+                            'STRONG_BUY': 'background-color: rgba(6, 214, 160, 0.4)',
+                            'BUY': 'background-color: rgba(76, 201, 240, 0.3)',
+                            'HOLD': 'background-color: rgba(255, 214, 10, 0.2)',
+                            'WATCH': 'background-color: rgba(255, 149, 0, 0.2)',
+                            'AVOID': 'background-color: rgba(239, 71, 111, 0.2)'
+                        }
+                        return colors.get(val, '')
+
+                    styled_df = df.style.applymap(color_rec, subset=['Rec'])
+                    st.dataframe(styled_df, use_container_width=True, height=500)
                 else:
-                    st.info("No recovery candidates found")
+                    st.info("No data available")
 
             st.markdown('<div class="styled-divider"></div>', unsafe_allow_html=True)
 
