@@ -229,9 +229,34 @@ class YahooFetcher:
                 'beta': info.get('beta'),
                 'sector': info.get('sector'),
                 'industry': info.get('industry'),
+
+                # Company Info
+                'company_name': info.get('shortName') or info.get('longName'),
+                'website': info.get('website'),
             }
         except Exception as e:
             logger.warning(f"Error fetching fundamental data for {symbol}: {e}")
+            return None
+
+    def get_company_info(self, symbol: str) -> Optional[dict]:
+        """
+        Get company name and website.
+
+        Returns:
+            dict with: name, website, sector, industry
+        """
+        try:
+            ticker = yf.Ticker(symbol.upper())
+            info = ticker.info
+
+            return {
+                'name': info.get('shortName') or info.get('longName') or symbol,
+                'website': info.get('website'),
+                'sector': info.get('sector'),
+                'industry': info.get('industry'),
+            }
+        except Exception as e:
+            logger.debug(f"Error fetching company info for {symbol}: {e}")
             return None
 
     def get_historical_prices_with_volume(

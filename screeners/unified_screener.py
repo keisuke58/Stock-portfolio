@@ -16,6 +16,10 @@ class UnifiedScore:
     """Comprehensive score combining all screening perspectives."""
     symbol: str
 
+    # Company Info
+    company_name: str = ""
+    website: str = ""
+
     # Overall
     unified_score: float = 0.0  # 0-100 master score
     recommendation: str = "HOLD"  # STRONG_BUY, BUY, HOLD, WATCH, AVOID
@@ -182,6 +186,41 @@ class UnifiedScreener:
 
         return None
 
+    def _fetch_company_info(self, score: UnifiedScore, symbol: str) -> UnifiedScore:
+        """Fetch company name and website."""
+        if not self.stock_fetcher:
+            return score
+
+        try:
+            # Try get_company_info first
+            if hasattr(self.stock_fetcher, 'get_company_info'):
+                info = self.stock_fetcher.get_company_info(symbol)
+                if info:
+                    score.company_name = info.get('name', '') or symbol
+                    score.website = info.get('website', '') or ''
+                    if not score.sector and info.get('sector'):
+                        score.sector = info.get('sector')
+                    return score
+
+            # Fallback to get_fundamental_data
+            if hasattr(self.stock_fetcher, 'get_fundamental_data'):
+                data = self.stock_fetcher.get_fundamental_data(symbol)
+                if data:
+                    score.company_name = data.get('company_name', '') or symbol
+                    score.website = data.get('website', '') or ''
+                    if not score.sector and data.get('sector'):
+                        score.sector = data.get('sector')
+                    return score
+
+        except Exception as e:
+            logger.debug(f"Error fetching company info for {symbol}: {e}")
+
+        # Default to symbol as name
+        if not score.company_name:
+            score.company_name = symbol
+
+        return score
+
     def screen_stock(self, symbol: str, price_data: pd.DataFrame = None) -> UnifiedScore:
         """
         Screen a single stock from all perspectives.
@@ -196,6 +235,9 @@ class UnifiedScreener:
         score = UnifiedScore(symbol=symbol)
 
         try:
+            # Fetch company info (name, website)
+            score = self._fetch_company_info(score, symbol)
+
             # Fetch price data if not provided
             if price_data is None:
                 price_data = self._fetch_price_data(symbol)

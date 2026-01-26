@@ -434,6 +434,20 @@ def render_recommendation_card(score, rank: int, category: str = "overall"):
     for signal in score.key_signals[:3]:
         signals_html += f'<span class="signal-tag">{signal}</span>'
 
+    # Company name (truncate if too long)
+    company_name = getattr(score, 'company_name', '') or score.symbol
+    if len(company_name) > 25:
+        company_name = company_name[:22] + "..."
+
+    # Links
+    yahoo_link = f"https://finance.yahoo.com/quote/{score.symbol}"
+    website = getattr(score, 'website', '') or ''
+
+    # Build links HTML
+    links_html = f'<a href="{yahoo_link}" target="_blank" style="color: #7c9aff; text-decoration: none; font-size: 0.7rem; margin-right: 8px;">📊 Yahoo</a>'
+    if website:
+        links_html += f'<a href="{website}" target="_blank" style="color: #7c9aff; text-decoration: none; font-size: 0.7rem;">🌐 Website</a>'
+
     st.markdown(f"""
     <div class="rec-card {rec_class}" style="position: relative;">
         <div class="rank-badge">#{rank}</div>
@@ -441,11 +455,13 @@ def render_recommendation_card(score, rank: int, category: str = "overall"):
             {rec_emoji} {score.symbol}
             <span class="category-badge">{score.sector or score.category}</span>
         </div>
+        <div style="font-size: 0.75rem; color: #a0a0a0; margin-top: 2px;">{company_name}</div>
         <div class="rec-score">{score.unified_score:.1f}</div>
         <div class="rec-details">
             <span>${score.current_price:,.2f}</span>
             <span class="rec-badge {rec_class}">{score.recommendation.replace('_', ' ')}</span>
         </div>
+        <div style="margin: 4px 0;">{links_html}</div>
         <div class="score-mini">
             <div class="score-mini-item">
                 <div class="score-mini-value">{score.ten_bagger_score:.0f}</div>
@@ -742,9 +758,14 @@ def render_screening_section():
                     # Create DataFrame for table view
                     table_data = []
                     for idx, score in enumerate(overall):
+                        company_name = getattr(score, 'company_name', '') or score.symbol
+                        if len(company_name) > 30:
+                            company_name = company_name[:27] + "..."
+
                         table_data.append({
                             'Rank': idx + 1,
                             'Symbol': score.symbol,
+                            'Company': company_name,
                             'Score': round(score.unified_score, 1),
                             'Rec': score.recommendation,
                             '10-Bag': round(score.ten_bagger_score, 0),
@@ -771,6 +792,16 @@ def render_screening_section():
 
                     styled_df = df.style.applymap(color_rec, subset=['Rec'])
                     st.dataframe(styled_df, use_container_width=True, height=500)
+
+                    # Download links for all symbols
+                    st.markdown('<div class="sub-header">🔗 Quick Links</div>', unsafe_allow_html=True)
+                    links_md = ""
+                    for score in overall[:20]:
+                        company_name = getattr(score, 'company_name', '') or score.symbol
+                        if len(company_name) > 20:
+                            company_name = company_name[:17] + "..."
+                        links_md += f"[{score.symbol}](https://finance.yahoo.com/quote/{score.symbol}) ({company_name}) | "
+                    st.markdown(links_md[:-3], unsafe_allow_html=True)  # Remove trailing " | "
                 else:
                     st.info("No data available")
 
@@ -783,6 +814,8 @@ def render_screening_section():
                 for score in results.get('overall', []):
                     export_data.append({
                         'Symbol': score.symbol,
+                        'Company': getattr(score, 'company_name', '') or score.symbol,
+                        'Website': getattr(score, 'website', '') or '',
                         'Unified Score': score.unified_score,
                         'Recommendation': score.recommendation,
                         'Ten Bagger Score': score.ten_bagger_score,
